@@ -14,7 +14,7 @@ print("Date range:", date_range)
 
 # Define time intervals
 day_count = (date_range[1] - date_range[0]).days
-day_count = 7  # TODO remove (for tests only)
+# day_count = 7  # TODO remove (for tests only)
 number_of_days_in_interval = 7
 number_of_new_days_in_interval = 3
 
@@ -36,8 +36,12 @@ i = 0
 while i < day_count:
     network = NetworkEngine()
     if i + number_of_days_in_interval < day_count:
-        edges_for_time_interval = comments_edges_by_day_index[i:i + number_of_days_in_interval].pop()
+        edges_for_time_interval = [j for i in comments_edges_by_day_index[i:i + number_of_days_in_interval] for j in i]
+        # # Including the last element so -1 added
+        print("{0}-{1} count: {2}".format(i, i + number_of_days_in_interval - 1, len(edges_for_time_interval)))
     else:  # Last interval that is shorter
-        edges_for_time_interval = comments_edges_by_day_index[i:day_count].pop()
+        edges_for_time_interval = [j for i in comments_edges_by_day_index[i:day_count] for j in i]
+        print("{0}-{1} count: {2}".format(i, day_count - 1, len(edges_for_time_interval)))
+        break
     network.add_edges(edges_for_time_interval)
     i += number_of_new_days_in_interval
