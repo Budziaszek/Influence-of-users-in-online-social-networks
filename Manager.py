@@ -11,10 +11,9 @@ class Manager:
 
     # Create DatabaseEngine that connects to database with given parameters and later
     # allow operations (e.g. queries). Define time intervals.
-    def __init__(self, parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'"):
+    def __init__(self, parameters):
         self._databaseEngine.connect(parameters)
         self._dates_range, self._days_count = self.__check_dates_range_and_count()
-        self._days_count = 14
         self._comments_by_day_index = self.__read_salon24_comments_data_by_day()
 
     # Check dates range (find min and max comment time)
@@ -40,9 +39,9 @@ class Manager:
             print("Select data for", day_start)
         return comments_by_day_index
 
-    def generate_graph_data(self, mode):
+    def generate_graph_data(self, mode, is_multi):
         self.graph_data = []
-        graph = NetworkEngine()
+        graph = NetworkEngine(is_multi=is_multi)
         i = 0
         # Dynamic graphs - Create graphs for intervals. Each interval has 7 days, next interval has
         # 4 days common with previous one. Note that las interval can be shorter.
