@@ -10,13 +10,13 @@ class NetworkEngine:
             self.G = nx.DiGraph()
 
     def add_edges(self, edges):
+        # Add multi edges
         if self.G.is_multigraph():
             self.G.add_edges_from(edges)
+        # Add single edge with number of connections as weight
         else:
             for edge in edges:
-                if self.G.has_edge(*edge):
-                    self.G.add_edge(*edge, weight=self.G.get_edge_data(*edge)['weight']+1)
-                else:
-                    self.G.add_edge(*edge, weight=1)
+                data = self.G.get_edge_data(*edge)
+                self.G.add_edge(*edge, weight=int(0 if data is None else data['weight'])+1)
         # nx.draw(self.G)
         # plt.show()

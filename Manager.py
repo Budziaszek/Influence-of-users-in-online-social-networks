@@ -13,6 +13,7 @@ class Manager:
     # allow operations (e.g. queries). Define time intervals.
     def __init__(self, parameters):
         self._databaseEngine.connect(parameters)
+        self._databaseEngine.create_first_activity_date_column()
         self._dates_range, self._days_count = self.__check_dates_range_and_count()
         self._comments_by_day_index = self.__read_salon24_comments_data_by_day()
 
