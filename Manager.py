@@ -1,13 +1,17 @@
 import datetime as dt
-from Database.PostgresDatabaseEngine import PostgresDatabaseEngine
-from Network.NetworkEngine import NetworkEngine
+
+from Data.PostgresDatabaseEngine import PostgresDatabaseEngine
+from Network.SocialNetworkGraph import SocialNetworkGraph
+from Data.FileWriter import FileWriter
 
 
 class Manager:
     _databaseEngine = PostgresDatabaseEngine()
     _number_of_days_in_interval = 7
     _number_of_new_days_in_interval = 3
-    graph_data = None
+    graph_data = []
+    file_writer = FileWriter()
+    mode = None
 
     # Create DatabaseEngine that connects to database with given parameters and later
     # allow operations (e.g. queries). Define time intervals.
@@ -17,7 +21,7 @@ class Manager:
         self._dates_range, self._days_count = self.__check_dates_range_and_count()
         self._comments_by_day_index = self.__read_salon24_comments_data_by_day()
 
-    # Check dates range (find min and max comment time)
+    # Check dates range (find min and max comment time) TODO include posts!
     def __check_dates_range_and_count(self, date_row_name="date", analyzed_column_name="comments"):
         dates_range = self._databaseEngine.execute("SELECT min(" + date_row_name + "), max(" + date_row_name
                                                    + ") FROM " + analyzed_column_name).pop()
@@ -41,9 +45,15 @@ class Manager:
         return comments_by_day_index
 
     def generate_graph_data(self, mode, is_multi):
-        self.graph_data = []
-        graph = NetworkEngine(is_multi=is_multi)
+        graph = SocialNetworkGraph(is_multi=is_multi)
+        if self.mode is None:
+            self.mode = mode
         i = 0
+        # First graph is static, next ones dynamic
+        if mode is "sd":
+            self.generate_graph_data("s", is_multi)
+            self.generate_graph_data("d", is_multi)
+            return
         # Dynamic graphs - Create graphs for intervals. Each interval has 7 days, next interval has
         # 4 days common with previous one. Note that las interval can be shorter.
         if mode is "d":
@@ -56,25 +66,61 @@ class Manager:
             interval_length = step
             print("Creating static graph")
         else:
-            print("ERROR - wrong graph mode")
-            return
+            raise Exception("ERROR - wrong graph mode")
 
         while i + step <= self._days_count:
             end = i + interval_length
             end = end if end < self._days_count else self._days_count  # Include last interval (which is shorter)
             edges = self.__join_array_of_arrays(self._comments_by_day_index, i, end)
             graph.add_edges(edges)
-            print("{0}-{1} count: {2}".format(i, end - 1, len(edges)))  # Including the last element so -1 added
-            if step is 1:
+            # print("{0}-{1} count: {2}".format(i, end - 1, len(edges)))  # Including the last element so -1 added
+            if step is 1:  # Static graph - update graph data
                 self.graph_data.clear()
                 self.graph_data.append(graph)
-            else:
+                print("Data (day %s) added to the graph %s" % (i, self.graph_data.index(graph)))
+            else:  # Dynamic graphs - append graph and create new for next interval
                 self.graph_data.append(graph)
-                graph = NetworkEngine()
+                print("Graph number %s created" % self.graph_data.index(graph))
+                graph = SocialNetworkGraph(is_multi)
             i += step
+
+    def calculate_neighborhoods(self, calculated_value, connection_type):
+        file_name = calculated_value + "_" + connection_type.value + ".txt"
+        print("Creating file", file_name, "for connection type", "<" + connection_type.value + ">")
+        self.file_writer.set_file(file_name)
+        self.file_writer.clean_file()
+
+        authors_names = self.get_authors("name")
+        authors_ids = self.get_authors("id")
+        for i in range(len(authors_ids)):  # For each author (node)
+            print("User", i, "/", len(authors_ids), authors_names[i])
+            # Prepare labels for row
+            data = [authors_ids[i], authors_names[i]]
+            for graph in self.graph_data:  # For each graph
+                # Check which parameter to calculate was selected
+                if calculated_value == "neighbors_count":  # Check number of neighbors
+                    count = connection_type.neighbors_count(graph, authors_ids[i])
+                if calculated_value == "connections_count":  # Check number of connections
+                    count = connection_type.connections_count(graph, authors_ids[i])
+                # Append to row of data (about the current author)
+                data.append(count)
+            # Write row to file
+            self.file_writer.write_row_to_file(data)
+        print("Done")
 
     @staticmethod
     def __join_array_of_arrays(array_of_arrays, start=0, end=None):
         if end is None:
             end = len(array_of_arrays)
         return [j for i in array_of_arrays[start:end] for j in i]
+
+    def get_authors(self, parameter):
+        return [x[0] for x in self._databaseEngine.execute("SELECT " + parameter + " FROM authors ORDER BY id")]
+
+    def get_graph_labels(self):
+        row_captions = []
+        if self.mode == "d" or self.mode == "sd":
+            row_captions = ["dynamic " + str(i) for i in range(len(self.graph_data))]
+        if self.mode == "s" or self.mode == "sd":
+            row_captions.insert(0, "static")
+        return row_captions
