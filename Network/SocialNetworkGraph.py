@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 
 
 class SocialNetworkGraph:
+    start_day = None
+    end_day = None
+
     def __init__(self, is_multi):
         if is_multi is True:
             self._G = nx.MultiDiGraph()

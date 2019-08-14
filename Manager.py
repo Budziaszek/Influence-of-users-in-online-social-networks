@@ -19,9 +19,10 @@ class Manager:
         self._databaseEngine.connect(parameters)
         self._databaseEngine.create_first_activity_date_column()
         self._dates_range, self._days_count = self.__check_dates_range_and_count()
-        self._comments_by_day_index = self.__read_salon24_comments_data_by_day()
+        # self._days_count = 50
+        self._comments_by_day_index, self.days = self.__read_salon24_comments_data_by_day()
 
-    # Check dates range (find min and max comment time) TODO include posts!
+    # Check dates range (find min and max comment time)
     def __check_dates_range_and_count(self, date_row_name="date", analyzed_column_name="comments"):
         dates_range = self._databaseEngine.execute("SELECT min(" + date_row_name + "), max(" + date_row_name
                                                    + ") FROM " + analyzed_column_name).pop()
@@ -32,9 +33,11 @@ class Manager:
     # and store data in array (chronologically day by day)
     def __read_salon24_comments_data_by_day(self):
         comments_by_day_index = []
+        days = []
         for day in (self._dates_range[0] + dt.timedelta(n) for n in range(self._days_count)):
             day_start = day.replace(hour=00, minute=00, second=00)
             day_end = day.replace(hour=23, minute=59, second=59)
+            days.append(day_start)
             comments_by_day_index.append(self._databaseEngine
                                          .execute("""SELECT c.author_id, p.author_id 
                                                 FROM comments c
@@ -42,7 +45,7 @@ class Manager:
                                                 WHERE c.date BETWEEN %s and %s""",
                                                   (day_start, day_end)))
             print("Select data for", day_start)
-        return comments_by_day_index
+        return comments_by_day_index, days
 
     def generate_graph_data(self, mode, is_multi):
         graph = SocialNetworkGraph(is_multi=is_multi)
@@ -79,11 +82,14 @@ class Manager:
                 self.graph_data.append(graph)
                 print("Data (day %s) added to the graph %s" % (i, self.graph_data.index(graph)))
             else:  # Dynamic graphs - append graph and create new for next interval
+                graph.start_day = self.days[i]
+                graph.end_day = self.days[end - 1]
                 self.graph_data.append(graph)
                 print("Graph number %s created" % self.graph_data.index(graph))
                 graph = SocialNetworkGraph(is_multi)
             i += step
 
+    # TODO Include only active users!
     def calculate_neighborhoods(self, calculated_value, connection_type):
         file_name = calculated_value + "_" + connection_type.value + ".txt"
         print("Creating file", file_name, "for connection type", "<" + connection_type.value + ">")
@@ -96,12 +102,17 @@ class Manager:
             print("User", i, "/", len(authors_ids), authors_names[i])
             # Prepare labels for row
             data = [authors_ids[i], authors_names[i]]
+            first_activity_date = self.get_first_activity_date(authors_ids[i])
             for graph in self.graph_data:  # For each graph
-                # Check which parameter to calculate was selected
-                if calculated_value == "neighbors_count":  # Check number of neighbors
-                    count = connection_type.neighbors_count(graph, authors_ids[i])
-                if calculated_value == "connections_count":  # Check number of connections
-                    count = connection_type.connections_count(graph, authors_ids[i])
+                count = None
+                if not self.is_author_active(first_activity_date, graph.end_day):
+                    count = ''
+                else:
+                    # Check which parameter to calculate was selected
+                    if calculated_value == "neighbors_count":  # Check number of neighbors
+                        count = connection_type.neighbors_count(graph, authors_ids[i])
+                    if calculated_value == "connections_count":  # Check number of connections
+                        count = connection_type.connections_count(graph, authors_ids[i])
                 # Append to row of data (about the current author)
                 data.append(count)
             # Write row to file
@@ -124,3 +135,18 @@ class Manager:
         if self.mode == "s" or self.mode == "sd":
             row_captions.insert(0, "static")
         return row_captions
+
+    def get_first_activity_date(self, author_id):
+        try:
+            return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
+                                                % ("first_activity_date", author_id))[0][0]
+        except IndexError:
+            return None
+
+    @staticmethod
+    def is_author_active(first_activity_date, end_day):
+        if end_day is None:
+            return True
+        if first_activity_date is None:
+            return False
+        return first_activity_date <= end_day.date()
