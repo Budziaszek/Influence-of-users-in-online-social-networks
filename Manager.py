@@ -1,4 +1,5 @@
 import datetime as dt
+from collections import defaultdict
 
 from Data.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
@@ -89,12 +90,14 @@ class Manager:
                 graph = SocialNetworkGraph(is_multi)
             i += step
 
-    # TODO Include only active users!
     def calculate_neighborhoods(self, calculated_value, connection_type):
         file_name = calculated_value + "_" + connection_type.value + ".txt"
         print("Creating file", file_name, "for connection type", "<" + connection_type.value + ">")
         self.file_writer.set_file(file_name)
         self.file_writer.clean_file()
+
+        if calculated_value == "connections_strength":
+            neighborhoods_by_size = defaultdict(list)
 
         authors_names = self.get_authors("name")
         authors_ids = self.get_authors("id")
@@ -104,19 +107,27 @@ class Manager:
             data = [authors_ids[i], authors_names[i]]
             first_activity_date = self.get_first_activity_date(authors_ids[i])
             for graph in self.graph_data:  # For each graph
-                count = None
+                value = None
                 if not self.is_author_active(first_activity_date, graph.end_day):
-                    count = ''
+                    value = ''
                 else:
                     # Check which parameter to calculate was selected
                     if calculated_value == "neighbors_count":  # Check number of neighbors
-                        count = connection_type.neighbors_count(graph, authors_ids[i])
+                        value = connection_type.neighbors_count(graph, authors_ids[i])
                     if calculated_value == "connections_count":  # Check number of connections
-                        count = connection_type.connections_count(graph, authors_ids[i])
+                        value = connection_type.connections_count(graph, authors_ids[i])
+                    if calculated_value == "connections_strength":
+                        value = connection_type.connections_strength(graph, authors_ids[i], neighborhoods_by_size)
                 # Append to row of data (about the current author)
-                data.append(count)
+                data.append(value)
             # Write row to file
             self.file_writer.write_row_to_file(data)
+        if calculated_value == "connections_strength":
+            open("dict" + connection_type.value + ".txt", 'w').close()
+            with open("dict" + connection_type.value + ".txt", "a+", encoding="utf-8") as f:
+                for key, value in neighborhoods_by_size.items():
+                    f.write(str(key) + ", " + str(value) + "")
+                    f.write("\n")
         print("Done")
 
     @staticmethod
