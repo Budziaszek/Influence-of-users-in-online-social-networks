@@ -11,7 +11,6 @@ class Manager:
     _number_of_days_in_interval = 7
     _number_of_new_days_in_interval = 3
     graph_data = []
-    file_writer = FileWriter()
     mode = None
 
     # Create DatabaseEngine that connects to database with given parameters and later
@@ -93,20 +92,27 @@ class Manager:
     def calculate_neighborhoods(self, calculated_value, connection_type):
         file_name = calculated_value + "_" + connection_type.value + ".txt"
         print("Creating file", file_name, "for connection type", "<" + connection_type.value + ">")
-        self.file_writer.set_file(file_name)
-        self.file_writer.clean_file()
-
-        if calculated_value == "connections_strength":
-            neighborhoods_by_size = defaultdict(list)
+        file_writer = FileWriter()
+        file_writer.set_file(file_name)
+        file_writer.clean_file()
 
         authors_names = self.get_authors("name")
         authors_ids = self.get_authors("id")
+
+        if calculated_value == "connections_strength":
+            neighborhoods_by_graph_by_size = []
+            for g in range(len(self.graph_data)):
+                neighborhoods_by_graph_by_size.append(defaultdict(list))
+                open("strength_by_graph_by_size_" + str(g)
+                     + "_" + connection_type.value + ".txt", 'w').close()
+
         for i in range(len(authors_ids)):  # For each author (node)
             print("User", i, "/", len(authors_ids), authors_names[i])
             # Prepare labels for row
             data = [authors_ids[i], authors_names[i]]
             first_activity_date = self.get_first_activity_date(authors_ids[i])
-            for graph in self.graph_data:  # For each graph
+            for g in range(len(self.graph_data)):  # For each graph
+                graph = self.graph_data[g]
                 value = None
                 if not self.is_author_active(first_activity_date, graph.end_day):
                     value = ''
@@ -117,17 +123,20 @@ class Manager:
                     if calculated_value == "connections_count":  # Check number of connections
                         value = connection_type.connections_count(graph, authors_ids[i])
                     if calculated_value == "connections_strength":
-                        value = connection_type.connections_strength(graph, authors_ids[i], neighborhoods_by_size)
+                        value = connection_type.connections_strength(graph, authors_ids[i],
+                                                    neighborhoods_by_graph_by_size[g])
                 # Append to row of data (about the current author)
                 data.append(value)
             # Write row to file
-            self.file_writer.write_row_to_file(data)
-        if calculated_value == "connections_strength":
-            open("dict" + connection_type.value + ".txt", 'w').close()
-            with open("dict" + connection_type.value + ".txt", "a+", encoding="utf-8") as f:
-                for key, value in neighborhoods_by_size.items():
-                    f.write(str(key) + ", " + str(value) + "")
-                    f.write("\n")
+            file_writer.write_row_to_file(data)
+        for g in range(len(self.graph_data)):
+            if calculated_value == "connections_strength":
+                open("strength_by_graph_by_size_" + str(g) + "_" + connection_type.value + ".txt", 'w').close()
+                with open("strength_by_graph_by_size_" + str(g) + "_" + connection_type.value
+                          + ".txt", "a+", encoding="utf-8") as f:
+                    for key, value in neighborhoods_by_graph_by_size[g].items():
+                        f.write(str(key) + ", " + str(value) + "")
+                        f.write("\n")
         print("Done")
 
     @staticmethod

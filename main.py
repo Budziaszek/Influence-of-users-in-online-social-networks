@@ -13,6 +13,6 @@ print("Number of graphs created:", len(manager.graph_data))
 # manager.calculate_neighborhoods(calculated_value="connections_count", connection_type=GraphConnectionType.IN)
 # manager.calculate_neighborhoods(calculated_value="connections_count", connection_type=GraphConnectionType.OUT)
 
-manager.calculate_neighborhoods(calculated_value="connections_strength", connection_type=GraphConnectionType.IN_OUT)
 manager.calculate_neighborhoods(calculated_value="connections_strength", connection_type=GraphConnectionType.IN)
 manager.calculate_neighborhoods(calculated_value="connections_strength", connection_type=GraphConnectionType.OUT)
+manager.calculate_neighborhoods(calculated_value="connections_strength", connection_type=GraphConnectionType.IN_OUT)
