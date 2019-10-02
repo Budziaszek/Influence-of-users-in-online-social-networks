@@ -45,3 +45,6 @@ class SocialNetworkGraph:
 
     def in_edges(self, node):
         return self._G.in_edges(node)
+
+    def number_of_nodes(self):
+        return self._G.number_of_nodes()

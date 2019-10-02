@@ -7,16 +7,7 @@ class GraphConnectionType(Enum):
     IN_OUT = "in+out"
 
     def neighbors_count(self, graph, node):
-        len(self.neighbors(graph, node))
-        # if not graph.has_node(node):
-        #     return 0
-        # if self.value == "out":
-        #     return sum(1 for _ in graph.successors(node))
-        # elif self.value == "in":
-        #     return sum(1 for _ in graph.predecessors(node))
-        # elif self.value == "in+out":
-        #     return sum(1 for _ in graph.successors(node)) + sum(1 for _ in graph.predecessors(node))
-        # return 0
+        return len(self.neighbors(graph, node))
 
     def neighbors(self, graph, node):
         if not graph.has_node(node):
@@ -26,7 +17,7 @@ class GraphConnectionType(Enum):
         elif self.value == "in":
             return [n for n in graph.predecessors(node)]
         elif self.value == "in+out":
-            return [n for n in graph.successors(node)] + [n for n in graph.predecessors(node)]
+            return list(set([n for n in graph.successors(node)]).intersection([n for n in graph.predecessors(node)]))
         return []
 
     def connections_count(self, graph, node):
@@ -44,6 +35,7 @@ class GraphConnectionType(Enum):
 
     def connections_strength(self, graph, node, neighborhoods_by_size):
         neighbors = self.neighbors(graph, node)
+        # Ignore neighborhood if user have no neighbors
         if len(neighbors) == 0:
             return 0
         neighbors.append(node)  # Include also considered node
