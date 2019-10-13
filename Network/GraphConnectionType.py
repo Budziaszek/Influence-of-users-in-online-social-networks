@@ -38,17 +38,17 @@ class GraphConnectionType(Enum):
         # Ignore neighborhood if user have no neighbors
         if len(neighbors) == 0:
             return 0
-        neighbors.append(node)  # Include also considered node
+        if node in neighbors:
+            neighbors.append(node)  # Include also considered node
         #  Initialize values - numbers of users in neighborhood connected to user (does NOT include user itself)
         values = []
         for n in neighbors:
-            n_neighbors = self.neighbors(graph, n)
-            values.append(len(list(set(n_neighbors).intersection(neighbors))) / len(neighbors) * 100)
+            # Do NOT include considered node
+            if n is not node:
+                n_neighbors = self.neighbors(graph, n)
+                values.append(len(list(set(n_neighbors).intersection(neighbors))) / len(neighbors) * 100)
 
         size = len(neighbors)
         value = sum(values)/size
-        # if size in neighborhoods_by_size.keys():
         neighborhoods_by_size[size].append(value)
-        # else:
-        #     nneighborhoods_by_size[neighbors] = [value]
         return value

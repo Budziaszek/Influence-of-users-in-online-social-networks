@@ -32,18 +32,11 @@ class PostgresDatabaseEngine(DatabaseEngine):
                     if data[n][0] != author_id:
                         author_id = data[n][0]
                         date = data[n][1]
-                        # print("author", author_id, date)
                         tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s"""
                                         % ("authors", "first_activity_date", date, author_id))
                     n = n + 1
                 data = self.cur.fetchmany(1000)
                 self.db.commit()
-
-        # self.cur.execute("""UPDATE %s SET %s = (SELECT min(min_date) FROM (
-        #            SELECT min(comments.date) AS min_date FROM comments WHERE author_id = %s
-        #            UNION
-        #            SELECT min(posts.date) AS min_date FROM posts WHERE author_id = %s
-        #            ) AS X) WHERE id = %s""" % ("authors", "first_activity_date", author_id, author_id, author_id))
 
     def does_column_exist(self, table, column):
         if self.cur is not None:
