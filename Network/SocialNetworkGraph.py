@@ -26,6 +26,7 @@ class SocialNetworkGraph:
         # Add single edge with number of connections as weight
         else:
             for edge in edges:
+                # print(edge)
                 data = self._G.get_edge_data(*edge)
                 self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
         # nx.draw(self.G)
@@ -52,5 +53,6 @@ class SocialNetworkGraph:
     def has_edge(self, u, v):
         return self._G.has_edge(u, v)
 
-    def reciprocity(self, nodes):
-        return nx.algorithms.reciprocity(self._G, nodes)
+    def reciprocity(self, nodes, neighborhood_limit=None):
+        if neighborhood_limit is None:
+            return nx.algorithms.reciprocity(self._G, nodes)
