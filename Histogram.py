@@ -3,12 +3,16 @@ import statistics
 import logging
 
 
-class HistogramWithSize:
-    def __init__(self, x_scale, size_scale):
+class Histogram:
+    def __init__(self, x_scale, size_scale=None):
         self.x_scale = [round(x, 15) for x in x_scale]
-        self.size_scale = [round(s, 15) for s in size_scale]
-        self.array = np.zeros([len(size_scale)-1, len(self.x_scale)-1])
-        self.size_labels = self.get_labels(self.size_scale)
+        if size_scale is not None:
+            self.size_scale = [round(s, 15) for s in size_scale]
+            self.size_labels = self.get_labels(self.size_scale)
+        else:
+            self.size_scale = ["all"]
+            self.size_labels = ["all"]
+        self.array = np.zeros([len(size_scale) - 1, len(self.x_scale) - 1])
         self.x_labels = self.get_labels(self.x_scale)
 
     @staticmethod
@@ -27,7 +31,10 @@ class HistogramWithSize:
         if data_function is None:
             for d in data:
                 i = self.check_index(d, self.x_scale)
-                j = self.check_index(size, self.size_scale)
+                if len(self.size_scale) == 1:
+                    j = 0
+                else:
+                    j = self.check_index(size, self.size_scale)
                 self.array[j, i] += 1
         elif len(data) == 0:
             return

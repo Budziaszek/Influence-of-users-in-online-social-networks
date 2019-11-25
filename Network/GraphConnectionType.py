@@ -18,22 +18,22 @@ class GraphConnectionType(Enum):
             return [n for n in graph.successors(node)]
         elif value == self.IN.value:
             return [n for n in graph.predecessors(node)]
-        elif value == self.IN_OUT.value:
-            return list(set([n for n in graph.successors(node)]).union([n for n in graph.predecessors(node)]))
+        # elif value == self.IN_OUT.value:
+        #     return list(set([n for n in graph.successors(node)]).union([n for n in graph.predecessors(node)]))
         return []
 
-    def connections_count(self, graph, node):
+    def connections(self, graph, node):
         if not graph.has_node(node):
-            return 0
+            return []
         if self.value == self.OUT:
-            return sum(graph[u][v]['weight'] for u, v in graph.out_edges(node))
+            return [graph[u][v]['weight'] for u, v in graph.out_edges(node)]
         elif self.value == self.IN:
-            return sum(graph[u][v]['weight'] for u, v in graph.in_edges(node))
-        elif self.value == self.IN_OUT:
-            return sum(graph[u][v]['weight'] for u, v in graph.in_edges(node)) \
-                   + sum(graph[u][v]['weight'] for u, v in graph.out_edges(node))
+            return [graph[u][v]['weight'] for u, v in graph.in_edges(node)]
         else:
-            return 0
+            return []
+
+    def connections_count(self, graph, node):
+        return sum(self.connections(graph, node))
 
     def density(self, graph, node):
         neighbors = self.neighbors(graph, node)
@@ -52,6 +52,20 @@ class GraphConnectionType(Enum):
         size = (len(neighbors) - 1)*len(neighbors)
         value = sum(values)/size
         return value
+
+    def intersection(self, graph_1, graph_2, node):
+        neighbors_graph_1 = self.neighbors(graph_1, node)
+        neighbors_graph_2 = self.neighbors(graph_2, node)
+        if (len(neighbors_graph_1) + len(neighbors_graph_2)) == 0:
+            return 0
+        return list(set(neighbors_graph_1).intersection(set(neighbors_graph_2)))
+
+    def union(self, graph_1, graph_2, node):
+        neighbors_graph_1 = self.neighbors(graph_1, node)
+        neighbors_graph_2 = self.neighbors(graph_2, node)
+        if (len(neighbors_graph_1) + len(neighbors_graph_2)) == 0:
+            return 0
+        return list(set(neighbors_graph_1).union(set(neighbors_graph_2)))
 
     def jaccard_index(self, graph, node):
         neighbors_in = self.neighbors(graph, node, self.IN.value)

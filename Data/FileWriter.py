@@ -3,7 +3,7 @@ import os
 
 
 class FileWriter:
-    file_name = "data.txt"
+    file_name = "statistics_values.txt"
     folder_name = ""
 
     def __init__(self):

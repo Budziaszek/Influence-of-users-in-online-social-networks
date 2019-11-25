@@ -1,11 +1,12 @@
 import datetime as dt
-from HistogramWithSize import HistogramWithSize
+from Histogram import Histogram
+from Network.GraphConnectionType import GraphConnectionType
 from ProgressBar import ProgressBar
 from Data.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
 from Data.FileWriter import FileWriter
 from Mode import Mode
-from MetricsType import MetricsType
+from ComplexMeasure import ComplexMeasure, MeasureGraphIterator, BasicMeasure, MeasureOperation
 import numpy
 
 
@@ -13,14 +14,13 @@ class Manager:
     _databaseEngine = PostgresDatabaseEngine()
     _number_of_days_in_interval = 7
     _number_of_new_days_in_interval = 3
-    graph_data = []
-    graph_type = None
+    dynamic_graphs = []
+    static_graph = None
     days = []
     comments_to_add = None
     mode = None
     authors_ids = None
     authors_names = None
-    connection_type = None
     static_neighborhood_size = None
 
     # (Array, Does_Exist)
@@ -28,18 +28,6 @@ class Manager:
     _comments_to_posts = ([], False)
     _comments_to_comments_from_others = ([], False)
     _comments_to_posts_from_others = ([], False)
-
-    @staticmethod
-    def is_author_active(first_activity_date, end_day):
-        if end_day is None:
-            return True
-        if first_activity_date is None:
-            return False
-        return first_activity_date <= end_day
-
-    @staticmethod
-    def get_static_neighbors_from_manager_instance(manager):
-        return manager.get_authors_static_neighborhood_size()
 
     @staticmethod
     def get_max_key(dictionary):
@@ -64,7 +52,7 @@ class Manager:
         self._dates_range, self._days_count = self.__check_dates_range_and_count()
         self.authors_ids = self.get_authors("id")
         self.authors_names = self.get_authors("name")
-        # self._days_count = 20
+        # self._days_count = 40
 
     # Check dates range (find min and max comment time)
     def __check_dates_range_and_count(self):
@@ -103,8 +91,8 @@ class Manager:
                                                                         WHERE c.parentcomment_id IS NOT NULL
                                                                         AND c.date BETWEEN """
                                                             + "'" + str(day_start) + "' and '" + str(day_end) + "'"
-                                                            + (
-                                                                "" if not from_others else "AND c.author_id!=p.author_id"))
+                                                            + ("" if not from_others
+                                                               else "AND c.author_id!=p.author_id"))
         if not from_others:
             self._comments_to_comments[0].append(numpy.array(comments_to_comments))
         else:
@@ -145,16 +133,16 @@ class Manager:
             self.comments_to_add.append(self._comments_to_posts_from_others[0])
             self.comments_to_add.append(self._comments_to_comments_from_others[0])
 
-    # Retrieve the most important data about comments (tuple: (comment author, post author)) by day from database
-    # and store data in array (chronologically day by day)
+    # Retrieve the most important statistics_values about comments (tuple: (comment author, post author))
+    # by day from database and store statistics_values in array (chronologically day by day)
     def __read_salon24_comments_data_by_day(self, mode):
-        print("Selecting data")
+        print("Selecting statistics_values")
         self.mode = mode
         days = []
         bar = ProgressBar(self._days_count)
 
         for day in (self._dates_range[0] + dt.timedelta(n) for n in range(self._days_count)):
-            # print("Select data for", day_start)
+            # print("Select statistics_values for", day_start)
             bar.next()
             day_start = day.replace(hour=00, minute=00, second=00)
             day_end = day.replace(hour=23, minute=59, second=59)
@@ -166,8 +154,8 @@ class Manager:
         return days
 
     def add_data_to_graphs(self, graph_type, is_multi):
-        self.graph_data = []
-        self.set_graph_type(graph_type)
+        self.dynamic_graphs = []
+        self.static_graph = None
         if graph_type is "sd":
             print("Creating static graph and dynamic graphs")
             self.add_data_to_static_graph(is_multi)
@@ -183,16 +171,12 @@ class Manager:
         print("Graphs created")
         return graph_type
 
-    def set_graph_type(self, graph_type):
-        if self.graph_type is None:
-            self.graph_type = graph_type
-
     def add_data_to_static_graph(self, is_multi):
         graph = SocialNetworkGraph(is_multi=is_multi)
         for comments in self.comments_to_add:
             edges = self.__join_array_of_numpy_arrays(comments, 0)
             graph.add_edges(edges)
-        self.graph_data.append(graph)
+        self.static_graph = graph
 
     def add_data_to_dynamic_graphs(self, is_multi):
         graph = SocialNetworkGraph(is_multi=is_multi)
@@ -209,72 +193,68 @@ class Manager:
                 edges = self.__join_array_of_numpy_arrays(comments, i, end + 1)
                 graph.add_edges(edges)
             graph.start_day, graph.end_day = self.days[i], self.days[end]
-            self.graph_data.append(graph)
+            self.dynamic_graphs.append(graph)
             graph = SocialNetworkGraph(is_multi=is_multi)
             i += step
 
-    def generate_graph_data(self, mode, graph_type, is_multi):
+    def generate_graph_data(self, mode):
         self.days = self.__read_salon24_comments_data_by_day(mode)
-        self.add_data_to_graphs(graph_type, is_multi)
+        self.add_data_to_graphs("sd", False)
         self.static_neighborhood_size = None
+        MeasureGraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
 
-    def calculate(self, calculated_value, connection_type, calculate_full_data=True, calculate_histogram=False,
-                  x_scale=None, size_scale=None, data_condition_function=None, data_function=None, mode=None):
+    def calculate(self, calculated_value, calculate_full_data=True, calculate_histogram=False,
+                  x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         file_writer, hist, authors_static_neighborhood_size, file_name_hist = None, None, None, None
-        self.connection_type = connection_type
 
         if calculate_full_data:
-            file_name = calculated_value.value + "_" + self.connection_type.value + ".txt"
-            print("Calculating %s (%s %s)" % (calculated_value.value, self.connection_type.value, self.mode))
-            print("Creating file", file_name, "for connection value", "<" + self.connection_type.value + ">")
+            file_name = calculated_value.value + ".txt"
+            print("Calculating %s (%s)" % (calculated_value.value, self.mode))
+            print("Creating file", file_name)
             file_writer = FileWriter()
-            file_writer.set_all(self.mode.value, file_name, self.get_graph_labels(3))
+            file_writer.set_all(self.mode.value, file_name, ["No labels"])
 
+        histograms = []
         if calculate_histogram:
-            if data_function is None:
-                fun_name = "all"
-            else:
-                fun_name = str(data_function.__name__)
-            file_name_hist = mode + "_" + fun_name + "_" + "histogram_" + calculated_value.value + "_" \
-                             + self.connection_type.value + ".txt"
-            print("Calculating histogram %s (%s %s)" % (calculated_value.value,
-                                                        self.connection_type.value, self.mode))
-            print("Creating file", file_name_hist, "for connection value", "<" + self.connection_type.value + ">")
-            hist = HistogramWithSize(x_scale, size_scale)
+            for data_function in data_functions:
+                if data_function is None:
+                    fun_name = "all"
+                else:
+                    fun_name = str(data_function.__name__)
+                print("Creating histogram for ", fun_name)
+                file_name = fun_name + "_" + "hist_" + calculated_value.value + ".txt"
+                hist = Histogram(x_scale, size_scale)
+                histograms.append([data_function, file_name, hist])
             authors_static_neighborhood_size = self.get_authors_static_neighborhood_size()
 
         bar = ProgressBar(len(self.authors_ids))
         for i in range(len(self.authors_ids)):  # For each author (node)
             bar.next()
-            # Prepare labels for row
-            data = []
             data_hist = []
             first_activity_date = self.get_first_activity_date(self.authors_ids[i])
-            # Add value for each graph
-            for g in range(len(self.graph_data)):
-                graph = self.graph_data[g]
-                if not self.is_author_active(first_activity_date, graph.end_day):
-                    data.append('')
-                else:
-                    value = calculated_value.calculate(self.connection_type, self.graph_data, g,
-                                                       self.authors_ids[i], self)
-                    # Append to row of data (about the current author)
-                    if data_condition_function is not None and data_condition_function(value):
-                        data.append(value)
-                        if mode == "s" and g == 0:
-                            data_hist.append(value)
-                        elif mode == "d" and g != 0:
-                            data_hist.append(value)
+            data = calculated_value.calculate(self.authors_ids[i], first_activity_date)
+            full_data = []
+            for d in data:
+                if d is not None:
+                    if data_condition_function is None or data_condition_function(d):
+                        if d is not "":
+                            data_hist.append(d)
+                        full_data.append(d)
                     else:
-                        data.append('')
-            # Add data to histogram
+                        full_data.append('')
+                else:
+                    full_data.append('')
+            # Add statistics_values to histogram
+            # [data_function, file_name, hist]
             if calculate_histogram:
-                hist.add(authors_static_neighborhood_size[i], data_hist, data_function)
+                for histogram in histograms:
+                    histogram[2].add(authors_static_neighborhood_size[i], data_hist, histogram[0])
             # Write row to file
             if calculate_full_data:
-                file_writer.write_row_to_file([self.authors_ids[i], self.authors_names[i], *data])
+                file_writer.write_row_to_file([self.authors_ids[i], self.authors_names[i], *full_data])
         if calculate_histogram:
-            hist.save('output/' + str(self.mode.value) + "/", file_name_hist)
+            for histogram in histograms:
+                histogram[2].save('output/' + str(self.mode.value) + "/", histogram[1])
         bar.finish()
         print("Done")
 
@@ -283,24 +263,19 @@ class Manager:
         file_writer = FileWriter()
         file_writer.set_path(self.mode.value, file_name)
         file_writer.clean_file()
-        file_writer.write_row_to_file(self.get_graph_labels(3))
+        # file_writer.write_row_to_file(self.get_graph_labels(3))
         for i in range(minimum_row_i, maximum_row_i):
             file_writer.write_row_to_file([str(i)] + array[i - 2])
 
     def get_authors(self, parameter):
         return [x[0] for x in self._databaseEngine.execute("SELECT " + parameter + " FROM authors ORDER BY id")]
 
-    def get_graph_labels(self, empty_count=0):
-        row_captions = []
-        if self.graph_type == "d" or self.graph_type == "sd":
-            row_captions = [str(g.start_day) for g in self.graph_data]
-        if self.graph_type == "s":
-            row_captions.insert(0, "static")
-        if self.graph_type == "sd":
-            row_captions[0] = "static"
-        for e in range(empty_count):
-            row_captions.insert(0, ",")
-        return row_captions
+    # def get_graph_labels(self, empty_count=0):
+    #     row_captions = [str(g.start_day) for g in self.dynamic_graphs]
+    #     row_captions[0] = "static"
+    #     for e in range(empty_count):
+    #         row_captions.insert(0, ",")
+    #     return row_captions
 
     def get_first_activity_date(self, author_id):
         try:
@@ -310,12 +285,14 @@ class Manager:
             return None
 
     def get_authors_static_neighborhood_size(self):
+        neighbors_in = BasicMeasure(BasicMeasure.NEIGHBORS, GraphConnectionType.IN)
         if self.static_neighborhood_size is None:
-            if not (self.graph_type is "sd" or self.graph_type is "s"):
-                raise Exception("No static graph included")
-            else:
-                calculated_value = MetricsType(MetricsType.NEIGHBORS_COUNT)
-                self.static_neighborhood_size = {i: calculated_value.calculate(self.connection_type, self.graph_data,
-                                                                               0, self.authors_ids[i], self)
-                                                 for i in range(len(self.authors_ids))}
+            calculated_value = ComplexMeasure("neighborhood_size",
+                                              [MeasureOperation("neighbors_in_static", "length")],
+                                              [MeasureGraphIterator(neighbors_in,
+                                                                    MeasureGraphIterator.GraphMode.STATIC)])
+            self.static_neighborhood_size = \
+                {i: calculated_value.calculate(self.authors_ids[i],
+                                               self.get_first_activity_date(self.authors_ids[i]))[0]
+                 for i in range(len(self.authors_ids))}
         return self.static_neighborhood_size
