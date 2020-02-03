@@ -67,14 +67,6 @@ class GraphConnectionType(Enum):
             return 0
         return list(set(neighbors_graph_1).union(set(neighbors_graph_2)))
 
-    def jaccard_index(self, graph, node):
-        neighbors_in = self.neighbors(graph, node, self.IN.value)
-        neighbors_out = self.neighbors(graph, node, self.OUT.value)
-        if (len(neighbors_out) + len(neighbors_in)) == 0:
-            return 0
-        intersection = list(set(neighbors_in).intersection(set(neighbors_out)))
-        return len(intersection)/(len(neighbors_in) + len(neighbors_out) - len(intersection))
-
     def part_of_neighborhood(self, graph, node):
         neighbors_in = self.neighbors(graph, node, self.IN.value)
         neighbors_out = self.neighbors(graph, node, self.OUT.value)

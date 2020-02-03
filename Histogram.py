@@ -42,7 +42,7 @@ class Histogram:
             try:
                 value = data_function(data)
             except statistics.StatisticsError as e:
-                logging.error("\nException caught: " + str(e) + "\n")
+                # logging.error("\nException caught: " + str(e) + "\n")
                 if data_function == statistics.stdev:
                     value = 0
                 else:
