@@ -26,7 +26,7 @@ class GraphIterator:
             raise Exception("GraphIterator without graphs set.")
         if self.graph_mode is self.GraphMode.DYNAMIC:
             graph = GraphIterator.dynamic_graphs[self.current_id]
-            if self.current_id + 1 >= len(self.dynamic_graphs):
+            if self.current_id + 1 >= len(GraphIterator.dynamic_graphs):
                 self.stop = True
             else:
                 self.current_id += 1
@@ -40,7 +40,7 @@ class GraphIterator:
         if self.graph_mode is self.GraphMode.DYNAMIC_CURR_NEXT \
                 or self.graph_mode is self.GraphMode.DYNAMIC_CURR_NEXT_AND_STATIC:
             graph = [GraphIterator.dynamic_graphs[self.current_id], GraphIterator.dynamic_graphs[self.current_id+1]]
-            if self.current_id + 2 >= len(self.dynamic_graphs):
+            if self.current_id + 2 >= len(GraphIterator.dynamic_graphs):
                 self.stop = True
             else:
                 self.current_id += 1

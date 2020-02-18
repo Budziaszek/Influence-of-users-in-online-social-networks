@@ -33,7 +33,7 @@ class Prediction:
         fig, ax = plt.subplots()
         colors = ['black', 'red', 'green', 'blue', 'purple', 'yellow', 'pink']
         for i, d in enumerate(data):
-            ax.plot(d[0], d[1], '-', color=colors[i])  # Solid line data
+            ax.plot(d[0], d[1], '-', color=colors[i])  # Solid line _data
         plt.legend(labels, loc='upper right')
         plt.title(title)
         plt.show()
@@ -53,7 +53,7 @@ class Prediction:
         data_train = self.data_frame[start:end]
         data_test = self.data_frame[end:end + test_length]
 
-        print(len(data_original), len(data_train), len(data_test))
+        # print(len(data_original), len(data_train), len(data_test))
 
         series_train = pd.Series(data_train.Original, data_train.index)
         series_original = pd.Series(data_original.Original, data_original.index)
@@ -81,7 +81,7 @@ class Prediction:
         # self.plot("Prediction " + fun.__name__,
         #           [(series_original.index, series_original),
         #            result_plot],
-        #           ("Original data", "Fitted values", "Predicted values"))
+        #           ("Original _data", "Fitted values", "Predicted values"))
 
     @staticmethod
     def exponential_smoothing(series_train, test_length, parameters_version=None):

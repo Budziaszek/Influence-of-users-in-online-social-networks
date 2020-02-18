@@ -2,14 +2,10 @@ from Manager import Manager
 from Network.GraphConnectionType import GraphConnectionType
 from Mode import Mode
 from MetricsType import MetricsType, GraphIterator
-from CustomMetricsTypeDesctiption import CustomMetricsTypeDescription
-from HelpFunctions import HelpFunctions
 import numpy as np
 from statistics import mean, stdev
-from scipy import stats
 
-manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'",
-                  test=False)
+manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)
 
 modes_to_calculate = [
     Mode.COMMENTS_TO_POSTS_FROM_OTHERS
@@ -58,9 +54,9 @@ functions = [
 
 for mode in modes_to_calculate:
     #  TODO split statistics_values into parts
-    manager.generate_graph_data(mode=mode)
+    manager.create_graphs(mode=mode)
     for value in values_to_calculate:
-        manager.calculate(calculate_full_data=False, calculate_histogram=False, predict=True, calculated_value=value,
+        manager.calculate(save_to_file=False, calculate_histogram=True, predict=False, calculated_value=value,
                           x_scale=np.arange(start=0, stop=1.01, step=0.05),
                           size_scale=[0, 1, 2, 6, 11, 101, 501, 6000], data_functions=functions,
                           data_condition_function=None)
