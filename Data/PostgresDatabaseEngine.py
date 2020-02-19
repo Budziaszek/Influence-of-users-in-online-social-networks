@@ -16,7 +16,6 @@ class PostgresDatabaseEngine(DatabaseEngine):
 
     def create_first_activity_date_column(self):
         if self.cur is not None and not self.does_column_exist("authors", "first_activity_date"):
-            print("Add first_activity_date column")
             self.cur.execute("""ALTER TABLE %s ADD %s date"""
                              % ("authors", "first_activity_date"))
             self.cur.execute("""SELECT author_id, date FROM comments
@@ -37,6 +36,19 @@ class PostgresDatabaseEngine(DatabaseEngine):
                     n = n + 1
                 data = self.cur.fetchmany(1000)
                 self.db.commit()
+
+    @staticmethod
+    def lst2pgarr(alist):
+        return '{' + ','.join([str(x) for x in alist]) + '}'
+
+    def update_value_column(self, parameter_name, author_id, value):
+        if self.cur is not None:
+            if not self.does_column_exist("authors", parameter_name):
+                self.cur.execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", parameter_name))
+            tmp_cur = self.db.cursor()
+            tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s""" %
+                            ("authors", parameter_name, self.lst2pgarr(value), author_id))
+            self.db.commit()
 
     def does_column_exist(self, table, column):
         if self.cur is not None:

@@ -256,7 +256,8 @@ class Manager:
         GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
 
     # -> save to database, -> save to file
-    def calculate(self, calculated_value, save_to_file=True, predict=False, calculate_histogram=False,
+    def calculate(self, calculated_value,
+                  save_to_file=True, save_to_database = True, predict=False, calculate_histogram=False,
                   x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         """
         Calculates metrics values for each user and allows creating files and saving to database.
@@ -290,8 +291,14 @@ class Manager:
             data_modified = self.modify_data(data, data_condition_function) if calculate_histogram or save_to_file else []
             self.add_data_to_histograms(histogram_managers, self.authors_static_neighborhood_size[i], data_modified)
             self.save_data_to_file(file_writer, self.authors_ids[i], self.authors_names[i], data_modified)
+            self.save_to_database(save_to_database, self.authors_ids[i], calculated_value, data_modified)
+
         self.save_histograms_to_file(str(self.mode.value), histogram_managers)
         bar.finish()
+
+    def save_to_database(self, save_to_database, author_id, calculated_value, data):
+        if save_to_database:
+            self._databaseEngine.update_value_column(calculated_value.value, author_id, data)
 
     @staticmethod
     def save_histograms_to_file(mode_name, histogram_managers):
