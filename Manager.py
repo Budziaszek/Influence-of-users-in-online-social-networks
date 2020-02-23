@@ -1,4 +1,8 @@
 import datetime as dt
+import os
+import pickle
+from pathlib import Path
+
 from Histogram import Histogram
 from MetricsType import GraphIterator, MetricsType
 from Network.GraphConnectionType import GraphConnectionType
@@ -251,15 +255,31 @@ class Manager:
             Defines model mode (which comments should me included)
         """
         self.mode = mode
-        # TODO check if is not saved
-        # Load saved
-        # Create and save
-        self._read_salon24_comments_data_by_day()
-        self._add_data_to_graphs("sd", False)
-        print(len(self.dynamic_graphs))
-        GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
+        graphs_file_name = 'graphs' + "/" + self.mode.name \
+            + "_" + str(self._number_of_days_in_interval) \
+            + "_" + str(self._number_of_new_days_in_interval)
+        Path('graphs').mkdir(parents=True, exist_ok=True)
 
-    # -> save to database, -> save to file
+        if os.path.exists(graphs_file_name):
+            self.load_graphs_from_file(graphs_file_name)
+            GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
+        else:
+            self._read_salon24_comments_data_by_day()
+            self._add_data_to_graphs("sd", False)
+            GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
+            self.save_graphs_to_file(graphs_file_name)
+
+    def load_graphs_from_file(self, graphs_file_name):
+        print("Loading graphs from file")
+        with open(graphs_file_name, 'rb') as file:
+            dictionary = pickle.load(file)
+            self.static_graph = dictionary['static']
+            self.dynamic_graphs = dictionary['dynamic']
+
+    def save_graphs_to_file(self, graphs_file_name):
+        with open(graphs_file_name, 'wb') as file:
+            pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
+
     def calculate(self, calculated_value,
                   save_to_file=True, save_to_database = True, predict=False, calculate_histogram=False,
                   x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
