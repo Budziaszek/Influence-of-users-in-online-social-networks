@@ -218,6 +218,7 @@ class Manager:
         for comments in self.comments_to_add:
             edges = numpy.concatenate(comments, axis=0)
             graph.add_edges(edges)
+        graph.start_day, graph.end_day = self.days[0], self.days[-1]
         self.static_graph = graph
 
     def _add_data_to_dynamic_graphs(self, is_multi):
@@ -250,6 +251,9 @@ class Manager:
             Defines model mode (which comments should me included)
         """
         self.mode = mode
+        # TODO check if is not saved
+        # Load saved
+        # Create and save
         self._read_salon24_comments_data_by_day()
         self._add_data_to_graphs("sd", False)
         print(len(self.dynamic_graphs))
@@ -261,6 +265,8 @@ class Manager:
                   x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         """
         Calculates metrics values for each user and allows creating files and saving to database.
+        :param save_to_database:
+            True - save calculated value to database.
         :param calculated_value: MetricsType
             Calculate function from given class is called
         :param save_to_file: bool
@@ -298,7 +304,8 @@ class Manager:
 
     def save_to_database(self, save_to_database, author_id, calculated_value, data):
         if save_to_database:
-            self._databaseEngine.update_value_column(calculated_value.value, author_id, data)
+            self._databaseEngine.update_value_column(calculated_value.value, calculated_value.graph_iterator.get_mode(),
+                                                     author_id, data)
 
     @staticmethod
     def save_histograms_to_file(mode_name, histogram_managers):
