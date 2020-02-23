@@ -21,6 +21,9 @@ class GraphIterator:
         self.current_id = 0
         self.stop = False
 
+    def get_mode(self):
+        return self._graph_mode
+
     def next(self):
         if GraphIterator.static_graph is None or GraphIterator.dynamic_graphs is None:
             raise Exception("GraphIterator without graphs set.")
@@ -87,14 +90,15 @@ class MetricsType:
             self.connection_type = [connection_type, connection_type]
 
     def calculate(self, user_id, first_activity_date=None):
-        # TODO include first activity date
         data = []
         self.graph_iterator.reset()
         while not self.graph_iterator.stop:
             graph = self.graph_iterator.next()
-            if not isinstance(graph, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
-                graph = [graph, graph]
-            value = self._calculate_basic_type(self.connection_type, graph, user_id)
+            value = -1
+            if first_activity_date is None or first_activity_date <= graph.end_day:
+                if not isinstance(graph, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
+                    graph = [graph, graph]
+                value = self._calculate_basic_type(self.connection_type, graph, user_id)
             data.append(value)
         return data
 
