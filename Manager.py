@@ -4,15 +4,15 @@ import pickle
 import warnings
 from pathlib import Path
 
-from Histogram import Histogram
-from MetricsType import GraphIterator, MetricsType
+from Metrics.MetricsProcessing.Histogram import Histogram
+from Metrics.MetricsType import GraphIterator, MetricsType
 from Network.GraphConnectionType import GraphConnectionType
-from Prediction import Prediction
-from ProgressBar import ProgressBar
-from Data.PostgresDatabaseEngine import PostgresDatabaseEngine
+from Metrics.MetricsProcessing.Prediction import Prediction
+from Utility.ProgressBar import ProgressBar
+from DataProcessing.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
-from Data.FileWriter import FileWriter
-from NeighborhoodMode import NeighborhoodMode
+from DataProcessing.FileWriter import FileWriter
+from Network.NeighborhoodMode import NeighborhoodMode
 import numpy
 from statsmodels.tsa.statespace.tools import diff
 
@@ -177,7 +177,7 @@ class Manager:
         and store values in array (chronologically day by day)
         """
         days = []
-        bar = ProgressBar("Selecting _data", "Data selected", self._days_count)
+        bar = ProgressBar("Selecting _data", "DataProcessing selected", self._days_count)
         for day in (self._dates_range[0] + dt.timedelta(n) for n in range(self._days_count)):
             day_start = day.replace(hour=00, minute=00, second=00)
             day_end = day.replace(hour=23, minute=59, second=59)
@@ -311,7 +311,7 @@ class Manager:
         :param data_condition_function: function
             Condition function defines which values should be removed to e.g. remove None values
         :param data_functions: array (function)
-            Data function defines how data should be modified in order to aggregate them e.g. minimum
+            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
         """
         histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, metrics,
                                                                  x_scale, size_scale)
@@ -353,7 +353,7 @@ class Manager:
         :param data_condition_function: function
             Condition function defines which values should be removed to e.g. remove None values
         :param data_functions: array (function)
-            Data function defines how data should be modified in order to aggregate them e.g. minimum
+            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
         """
         if mode != self.mode:
             self._create_graphs(mode)
@@ -432,7 +432,7 @@ class Manager:
         :param size: array (int)
             Neighborhood size
         :param data:
-            Data to add
+            DataProcessing to add
         """
         for h in histogram_managers:
             h.add_data(size, data)
@@ -442,7 +442,7 @@ class Manager:
         """
         Removes unwanted values from data array.
         :param data: array
-            Data that will be modified
+            DataProcessing that will be modified
         :param data_condition_function:
             Function which defines if data should stay in array or be removed
         :return: array
@@ -502,7 +502,7 @@ class Manager:
         """
         Predict time series.
         :param data: array
-            Data used in prediction
+            DataProcessing used in prediction
         :param author_i: int
             Index of author
         """
@@ -530,7 +530,7 @@ class Manager:
         """
         Adds absolute value of data minimum to each element in order to make data strictly positive.
         :param data: array
-            Data to transform
+            DataProcessing to transform
         :return: array
             Transformed data
         """

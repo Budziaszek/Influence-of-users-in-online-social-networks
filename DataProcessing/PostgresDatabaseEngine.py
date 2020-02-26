@@ -1,5 +1,5 @@
 import psycopg2
-from Data.DatabaseEngine import DatabaseEngine
+from DataProcessing.DatabaseEngine import DatabaseEngine
 
 
 class PostgresDatabaseEngine(DatabaseEngine):

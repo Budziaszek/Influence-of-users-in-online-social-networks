@@ -1,4 +1,4 @@
-from GraphIterator import GraphIterator
+from Network.GraphIterator import GraphIterator
 
 
 class MetricsType:

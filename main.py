@@ -1,8 +1,7 @@
 from Manager import Manager
 from Network.GraphConnectionType import GraphConnectionType
-from NeighborhoodMode import NeighborhoodMode
-from MetricsType import MetricsType, GraphIterator
-import numpy as np
+from Network.NeighborhoodMode import NeighborhoodMode
+from Metrics.MetricsType import MetricsType, GraphIterator
 from statistics import mean, stdev
 
 manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)

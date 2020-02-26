@@ -1,6 +1,7 @@
 from statistics import mean, stdev
 import numpy as np
 
+
 class Statistics:
 
     def __init__(self):
