@@ -1,6 +1,7 @@
 import datetime as dt
 import os
 import pickle
+import warnings
 from pathlib import Path
 
 from Histogram import Histogram
@@ -11,7 +12,7 @@ from ProgressBar import ProgressBar
 from Data.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
 from Data.FileWriter import FileWriter
-from Mode import Mode
+from NeighborhoodMode import NeighborhoodMode
 import numpy
 from statsmodels.tsa.statespace.tools import diff
 
@@ -69,6 +70,7 @@ class Manager:
         :param test: bool, optional
             True - calculate model only for short period of time
         """
+        warnings.filterwarnings("ignore")
         self._comments_to_comments = self.CommentsReader(self._select_responses_to_comments, True)
         self._comments_to_posts = self.CommentsReader(self._select_responses_to_posts, True)
         self._comments_to_comments_from_others = self.CommentsReader(self._select_responses_to_comments, False)
@@ -82,7 +84,7 @@ class Manager:
             self._days_count = self._number_of_days_in_interval * 5
         self.authors_ids = self._get_authors("id")
         self.authors_names = self._get_authors("name")
-        self.authors_static_neighborhood_size = None
+        self.static_neighborhood_size = None
 
     def _get_dates_range(self):
         """
@@ -154,18 +156,18 @@ class Manager:
         Sets variable, which contains comments included in model.
         """
         self.comments_to_add = []
-        if self.mode is Mode.COMMENTS_TO_POSTS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS:
             self.comments_to_add.append(self._comments_to_posts.get_data())
-        if self.mode is Mode.COMMENTS_TO_POSTS_FROM_OTHERS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_posts_from_others.get_data())
-        if self.mode is Mode.COMMENTS_TO_COMMENTS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_COMMENTS:
             self.comments_to_add.append(self._comments_to_comments.get_data())
-        if self.mode is Mode.COMMENTS_TO_COMMENTS_FROM_OTHERS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_COMMENTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_comments_from_others.get_data())
-        if self.mode is Mode.COMMENTS_TO_POSTS_AND_COMMENTS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS:
             self.comments_to_add.append(self._comments_to_posts.get_data())
             self.comments_to_add.append(self._comments_to_comments.get_data())
-        if self.mode is Mode.COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS:
+        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_posts_from_others.get_data())
             self.comments_to_add.append(self._comments_to_comments_from_others.get_data())
 
@@ -251,7 +253,7 @@ class Manager:
     def _create_graphs(self, mode):
         """
         Creates graphs corresponding to the selected mode.
-        :param mode: Mode
+        :param mode: NeighborhoodMode
             Defines model mode (which comments should me included)
         """
         self.mode = mode
@@ -290,16 +292,53 @@ class Manager:
         with open(graphs_file_name, 'wb') as file:
             pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
 
-    def calculate(self, mode, calculated_value,
+    def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
+                            x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+        """
+        Load data from database - only if metrics was calculated before. Result can be used in prediction or histogram.
+        :param mode: NeighborhoodMode
+            Defines model mode (which comments should be included)
+        :param metrics: MetricsType
+            Calculate function from given class is called
+        :param predict: bool
+            True - predict time series
+        :param calculate_histogram: bool
+            True - calculate and save data as a histogram
+        :param x_scale: array (float)
+            Defines standard classes for the histogram
+        :param size_scale: array (int)
+            Defines size classes for the histogram
+        :param data_condition_function: function
+            Condition function defines which values should be removed to e.g. remove None values
+        :param data_functions: array (function)
+            Data function defines how data should be modified in order to aggregate them e.g. minimum
+        """
+        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, metrics,
+                                                                 x_scale, size_scale)
+        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors_ids))
+        for i in range(len(self.authors_ids)):  # For each author (node)
+            bar.next()
+            data = self._databaseEngine.get_array_value_column(metrics.value,
+                                                               metrics.graph_iterator.get_mode(),
+                                                               self.authors_ids[i])
+            if predict:
+                self.predict(data, i)
+            data_modified = self._modify_data(data, data_condition_function) if calculate_histogram else []
+            if calculate_histogram:
+                self._add_data_to_histograms(histogram_managers, self.static_neighborhood_size[i], data_modified)
+        self._save_histograms_to_file(str(self.mode.value), histogram_managers)
+        bar.finish()
+
+    def calculate(self, mode, metrics,
                   save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
                   x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         """
         Calculates metrics values for each user and allows creating files and saving to database.
-        :param mode: Mode
+        :param mode: NeighborhoodMode
             Defines model mode (which comments should me included)
         :param save_to_database: bool
             True - save calculated value to database
-        :param calculated_value: MetricsType
+        :param metrics: MetricsType
             Calculate function from given class is called
         :param save_to_file: bool
             True - save full data to file
@@ -319,23 +358,24 @@ class Manager:
         if mode != self.mode:
             self._create_graphs(mode)
 
-        file_writer = self._initialize_file_writer(save_to_file, calculated_value)
-        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, calculated_value,
+        file_writer = self._initialize_file_writer(save_to_file, metrics)
+        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, metrics,
                                                                  x_scale, size_scale)
-        bar = ProgressBar("Calculating %s (%s)" % (calculated_value.value, self.mode), "Calculated",
+        bar = ProgressBar("Calculating %s (%s)" % (metrics.value, self.mode), "Calculated",
                           len(self.authors_ids))
         for i in range(len(self.authors_ids)):  # For each author (node)
             bar.next()
             first_activity_date = self._get_first_activity_date(self.authors_ids[i])
-            data = calculated_value.calculate(self.authors_ids[i], first_activity_date)
+            data = metrics.calculate(self.authors_ids[i], first_activity_date)
             if predict:
-                self.predict(data, self.authors_names[i])
+                self.predict(data, i)
             data_modified = self._modify_data(data,
                                               data_condition_function) if calculate_histogram or save_to_file else []
-            self._add_data_to_histograms(histogram_managers, self.authors_static_neighborhood_size[i], data_modified)
+            if calculate_histogram:
+                self._add_data_to_histograms(histogram_managers, self.static_neighborhood_size[i], data_modified)
             self._save_data_to_file(file_writer, self.authors_ids[i], self.authors_names[i], data_modified)
             if save_to_database:
-                self._save_to_database(self.authors_ids[i], calculated_value, data_modified)
+                self._save_to_database(self.authors_ids[i], metrics, data_modified)
 
         self._save_histograms_to_file(str(self.mode.value), histogram_managers)
         bar.finish()
@@ -458,13 +498,13 @@ class Manager:
             return file_writer
         return None
 
-    def predict(self, data, author_name):
+    def predict(self, data, author_i):
         """
         Predict time series.
         :param data: array
             Data used in prediction
-        :param author_name: str
-            Label for prediction
+        :param author_i: int
+            Index of author
         """
         plot_data = []
         title_data = []
@@ -473,7 +513,7 @@ class Manager:
         parameters_versions = [i for i in range(3)]
         data = self._make_data_positive(diff(data))
         # print("Predict")
-        prediction = Prediction(data, author_name)
+        prediction = Prediction(data, self.authors_names[author_i])
         for parameters_version in parameters_versions:
             result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
                                         Prediction.MAPE_error, parameters_version)
@@ -482,8 +522,8 @@ class Manager:
                 title_data.append("Original")
             plot_data.append(result[1])
             title_data.append(result[0] + str(parameters_version))
-        if author_name in interesting_ids:
-            Prediction.plot("Prediction for " + author_name, plot_data, title_data)
+        if self.authors_ids[author_i] in interesting_ids:
+            Prediction.plot("Prediction for " + self.authors_names[author_i], plot_data, title_data)
 
     @staticmethod
     def _make_data_positive(data):
@@ -541,11 +581,11 @@ class Manager:
         :return: array (int)
             Neighborhoods sizes
         """
-        if self.authors_static_neighborhood_size is None:
+        if self.static_neighborhood_size is None:
             calculated_value = MetricsType(MetricsType.NEIGHBORS_COUNT, GraphConnectionType.IN,
                                            GraphIterator(GraphIterator.GraphMode.STATIC))
-            self.authors_static_neighborhood_size = \
+            self.static_neighborhood_size = \
                 {i: calculated_value.calculate(self.authors_ids[i],
                                                self._get_first_activity_date(self.authors_ids[i]))[0]
                  for i in range(len(self.authors_ids))}
-        return self.authors_static_neighborhood_size
+        return self.static_neighborhood_size

@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class Mode(Enum):
+class NeighborhoodMode(Enum):
     COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS = "comments_to_posts_and_comments_from_others"
     COMMENTS_TO_POSTS_FROM_OTHERS = "comments_to_posts_from_others"
     COMMENTS_TO_COMMENTS_FROM_OTHERS = "comments_to_comment_from_others"

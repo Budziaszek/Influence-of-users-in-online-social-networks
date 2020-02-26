@@ -41,7 +41,7 @@ class PostgresDatabaseEngine(DatabaseEngine):
     def lst2pgarr(alist):
         return '{' + ','.join([str(x) for x in alist]) + '}'
 
-    def update_value_column(self, parameter_name, graph_mode, author_id, value):
+    def update_array_value_column(self, parameter_name, graph_mode, author_id, value):
         if self.cur is not None:
             column_name = parameter_name + "_" + graph_mode
             if not self.does_column_exist("authors", column_name):
@@ -50,6 +50,13 @@ class PostgresDatabaseEngine(DatabaseEngine):
             tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s""" %
                             ("authors", column_name, self.lst2pgarr(value), author_id))
             self.db.commit()
+
+    def get_array_value_column(self, parameter_name, graph_mode, author_id):
+        if self.cur is not None:
+            column_name = parameter_name + "_" + graph_mode
+            self.cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
+            self.db.commit()
+            return self.cur.fetchall()[0][0]
 
     def does_column_exist(self, table, column):
         if self.cur is not None:
