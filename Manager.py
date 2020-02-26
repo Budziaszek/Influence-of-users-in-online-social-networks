@@ -80,8 +80,8 @@ class Manager:
         self._days_count = (self._dates_range[1] - self._dates_range[0]).days
         if test is True:
             self._days_count = self._number_of_days_in_interval * 5
-        self.authors_ids = self.get_authors("id")
-        self.authors_names = self.get_authors("name")
+        self.authors_ids = self._get_authors("id")
+        self.authors_names = self._get_authors("name")
         self.authors_static_neighborhood_size = None
 
     def _get_dates_range(self):
@@ -248,7 +248,7 @@ class Manager:
             graph = SocialNetworkGraph(is_multi=is_multi)
             i += step
 
-    def create_graphs(self, mode):
+    def _create_graphs(self, mode):
         """
         Creates graphs corresponding to the selected mode.
         :param mode: Mode
@@ -256,94 +256,158 @@ class Manager:
         """
         self.mode = mode
         graphs_file_name = 'graphs' + "/" + self.mode.name \
-            + "_" + str(self._number_of_days_in_interval) \
-            + "_" + str(self._number_of_new_days_in_interval)
+                           + "_" + str(self._number_of_days_in_interval) \
+                           + "_" + str(self._number_of_new_days_in_interval)
         Path('graphs').mkdir(parents=True, exist_ok=True)
 
         if os.path.exists(graphs_file_name):
-            self.load_graphs_from_file(graphs_file_name)
+            self._load_graphs_from_file(graphs_file_name)
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
         else:
             self._read_salon24_comments_data_by_day()
             self._add_data_to_graphs("sd", False)
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
-            self.save_graphs_to_file(graphs_file_name)
+            self._save_graphs_to_file(graphs_file_name)
 
-    def load_graphs_from_file(self, graphs_file_name):
+    def _load_graphs_from_file(self, graphs_file_name):
+        """
+        Loads graphs from file.
+        :param graphs_file_name:
+            Filename from which graphs will be loaded
+        """
         print("Loading graphs from file")
         with open(graphs_file_name, 'rb') as file:
             dictionary = pickle.load(file)
             self.static_graph = dictionary['static']
             self.dynamic_graphs = dictionary['dynamic']
 
-    def save_graphs_to_file(self, graphs_file_name):
+    def _save_graphs_to_file(self, graphs_file_name):
+        """
+        Saves graphs to file.
+        :param graphs_file_name: string
+            Filename in which graphs will be saved
+        """
         with open(graphs_file_name, 'wb') as file:
             pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
 
-    def calculate(self, calculated_value,
-                  save_to_file=True, save_to_database = True, predict=False, calculate_histogram=False,
+    def calculate(self, mode, calculated_value,
+                  save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
                   x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         """
         Calculates metrics values for each user and allows creating files and saving to database.
-        :param save_to_database:
-            True - save calculated value to database.
+        :param mode: Mode
+            Defines model mode (which comments should me included)
+        :param save_to_database: bool
+            True - save calculated value to database
         :param calculated_value: MetricsType
             Calculate function from given class is called
         :param save_to_file: bool
             True - save full data to file
         :param predict: bool
-            True - predict time series.
+            True - predict time series
         :param calculate_histogram: bool
-            True - calculate and save data as a histogram.
+            True - calculate and save data as a histogram
         :param x_scale: array (float)
-            Defines standard classes for the histogram.
+            Defines standard classes for the histogram
         :param size_scale: array (int)
-            Defines size classes for the histogram.
+            Defines size classes for the histogram
         :param data_condition_function: function
             Condition function defines which values should be removed to e.g. remove None values
         :param data_functions: array (function)
             Data function defines how data should be modified in order to aggregate them e.g. minimum
         """
-        file_writer = self.initialize_file_writer(save_to_file, calculated_value)
-        histogram_managers = self.initialize_histogram_managers(calculate_histogram, data_functions, calculated_value,
-                                                                x_scale, size_scale)
+        if mode != self.mode:
+            self._create_graphs(mode)
+
+        file_writer = self._initialize_file_writer(save_to_file, calculated_value)
+        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, calculated_value,
+                                                                 x_scale, size_scale)
         bar = ProgressBar("Calculating %s (%s)" % (calculated_value.value, self.mode), "Calculated",
                           len(self.authors_ids))
         for i in range(len(self.authors_ids)):  # For each author (node)
             bar.next()
-            first_activity_date = self.get_first_activity_date(self.authors_ids[i])
+            first_activity_date = self._get_first_activity_date(self.authors_ids[i])
             data = calculated_value.calculate(self.authors_ids[i], first_activity_date)
-            self.predict(predict, data, self.authors_names[i])
-            data_modified = self.modify_data(data, data_condition_function) if calculate_histogram or save_to_file else []
-            self.add_data_to_histograms(histogram_managers, self.authors_static_neighborhood_size[i], data_modified)
-            self.save_data_to_file(file_writer, self.authors_ids[i], self.authors_names[i], data_modified)
-            self.save_to_database(save_to_database, self.authors_ids[i], calculated_value, data_modified)
+            if predict:
+                self.predict(data, self.authors_names[i])
+            data_modified = self._modify_data(data,
+                                              data_condition_function) if calculate_histogram or save_to_file else []
+            self._add_data_to_histograms(histogram_managers, self.authors_static_neighborhood_size[i], data_modified)
+            self._save_data_to_file(file_writer, self.authors_ids[i], self.authors_names[i], data_modified)
+            if save_to_database:
+                self._save_to_database(self.authors_ids[i], calculated_value, data_modified)
 
-        self.save_histograms_to_file(str(self.mode.value), histogram_managers)
+        self._save_histograms_to_file(str(self.mode.value), histogram_managers)
         bar.finish()
 
-    def save_to_database(self, save_to_database, author_id, calculated_value, data):
-        if save_to_database:
-            self._databaseEngine.update_value_column(calculated_value.value, calculated_value.graph_iterator.get_mode(),
-                                                     author_id, data)
+    def _save_to_database(self, author_id, calculated_value, data):
+        """
+        Saves data for one author to database.
+        :param author_id: int
+            Id of the author to whom the data refer
+        :param calculated_value: MetricsType
+            Type of calculated value
+        :param data: array (float)
+            Calculated metrics values
+        """
+        self._databaseEngine.update_array_value_column(calculated_value.value,
+                                                       calculated_value.graph_iterator.get_mode(),
+                                                       author_id, data)
 
     @staticmethod
-    def save_histograms_to_file(mode_name, histogram_managers):
+    def _save_histograms_to_file(mode_name, histogram_managers):
+        """
+        Saves histogram data to file.
+        :param mode_name: str
+            Mode name - folder
+        :param histogram_managers: array (HistogramManager)
+            Histogram managers used for saving data
+        :return:
+        """
         for histogram in histogram_managers:
             histogram.save('output/' + mode_name + "/")
 
     @staticmethod
-    def save_data_to_file(file_writer, author_id, author_name, data):
+    def _save_data_to_file(file_writer, author_id, author_name, data):
+        """
+        Saves data to file.
+        :param file_writer: FileWriter
+            FileWriter used to save data
+        :param author_id: int
+            Id of the author to whom the data refer
+        :param author_name: str
+            Name of the author to whom the data refer
+        :param data: array (float)
+            Author's data
+        """
         if file_writer is not None:
             file_writer.write_row_to_file([author_id, author_name, *data])
 
     @staticmethod
-    def add_data_to_histograms(histogram_managers, size, data):
+    def _add_data_to_histograms(histogram_managers, size, data):
+        """
+        Adds data to histograms.
+        :param histogram_managers: array (HistogramManager)
+            Histogram managers used for saving data
+        :param size: array (int)
+            Neighborhood size
+        :param data:
+            Data to add
+        """
         for h in histogram_managers:
             h.add_data(size, data)
 
     @staticmethod
-    def modify_data(data, data_condition_function):
+    def _modify_data(data, data_condition_function):
+        """
+        Removes unwanted values from data array.
+        :param data: array
+            Data that will be modified
+        :param data_condition_function:
+            Function which defines if data should stay in array or be removed
+        :return: array
+            Modified array
+        """
         data_modified = []
         for d in data:
             if d is not None and (data_condition_function is None or data_condition_function(d)):
@@ -352,72 +416,136 @@ class Manager:
                 data_modified.append('')
         return data_modified
 
-    def initialize_histogram_managers(self, calculate_histogram, data_functions, calculated_value, x_scale, size_scale):
+    def _initialize_histogram_managers(self, calculate_histogram, data_functions, calculated_value, x_scale,
+                                       size_scale):
+        """
+        Initializes array of HistogramManagers if required.
+        :param calculate_histogram: bool
+            True - initialization required
+        :param data_functions: array (function)
+            Function used for data aggregation
+        :param calculated_value: MetricsType
+            Metrics that is currently calculated
+        :param x_scale: array (float)
+            Defines standard classes for the histogram
+        :param size_scale: array (int)
+            Defines size classes for the histogram
+        :return: array (HistogramManager)
+            Array of initialized HistogramManagers if initialization is required otherwise empty array
+        """
         if calculate_histogram:
             histogram_managers = []
-            self.calculate_and_get_authors_static_neighborhood_size()
+            self._calculate_and_get_authors_static_neighborhood_size()
             for data_function in data_functions:
                 histogram_managers.append(self.HistogramManager(data_function, calculated_value, x_scale, size_scale))
             return histogram_managers
         return []
 
-    def initialize_file_writer(self, save_to_file, calculated_value):
+    def _initialize_file_writer(self, save_to_file, calculated_value):
+        """
+        Initializes FileWriter if required.
+        :param save_to_file: bool
+            True - initialization is required
+        :param calculated_value: MetricsType
+            Defines filename
+        :return: FileWriter
+            Initialized FileWriter if initialization is required otherwise None
+        """
         if save_to_file:
             file_name = calculated_value.get_name() + ".txt"
             file_writer = FileWriter()
-            file_writer.set_all(self.mode.value, file_name, self.get_graph_labels(3))
+            file_writer.set_all(self.mode.value, file_name, self._get_graphs_labels(3))
             return file_writer
         return None
 
-    def predict(self, predict, data, author_name):
-        if predict:
-            plot_data = []
-            title_data = []
-            interesting_ids = [1672, 440, 241, 2177, 797, 3621, 11, 2516]
-            methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
-            parameters_versions = [i for i in range(3)]
-            data = self.make_data_positive(diff(data))
-            # print("Predict")
-            prediction = Prediction(data, author_name)
-            for parameters_version in parameters_versions:
-                result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
-                                            Prediction.MAPE_error, parameters_version)
-                if len(plot_data) == 0:
-                    plot_data.append((result[2].index, result[2]))
-                    title_data.append("Original")
-                plot_data.append(result[1])
-                title_data.append(result[0] + str(parameters_version))
-            if author_name in interesting_ids:
-                Prediction.plot("Prediction for " + author_name, plot_data, title_data)
+    def predict(self, data, author_name):
+        """
+        Predict time series.
+        :param data: array
+            Data used in prediction
+        :param author_name: str
+            Label for prediction
+        """
+        plot_data = []
+        title_data = []
+        interesting_ids = [1672, 440, 241, 2177, 797, 3621, 11, 2516]
+        methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
+        parameters_versions = [i for i in range(3)]
+        data = self._make_data_positive(diff(data))
+        # print("Predict")
+        prediction = Prediction(data, author_name)
+        for parameters_version in parameters_versions:
+            result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
+                                        Prediction.MAPE_error, parameters_version)
+            if len(plot_data) == 0:
+                plot_data.append((result[2].index, result[2]))
+                title_data.append("Original")
+            plot_data.append(result[1])
+            title_data.append(result[0] + str(parameters_version))
+        if author_name in interesting_ids:
+            Prediction.plot("Prediction for " + author_name, plot_data, title_data)
 
     @staticmethod
-    def make_data_positive(data):
+    def _make_data_positive(data):
+        """
+        Adds absolute value of data minimum to each element in order to make data strictly positive.
+        :param data: array
+            Data to transform
+        :return: array
+            Transformed data
+        """
         minimum = min(data)
         return data + abs(minimum) + 1
 
-    def get_authors(self, parameter):
+    def _get_authors(self, parameter):
+        """
+        Created array of authors parameters ordered by id.
+        :param parameter: str
+            Parameter which should be selected from database
+        :return: array
+            Array with authors parameters ordered by id
+        """
         return [x[0] for x in self._databaseEngine.execute("SELECT " + parameter + " FROM authors ORDER BY id")]
 
-    def get_graph_labels(self, empty_count=0):
+    def _get_graphs_labels(self, empty_count=0):
+        """
+        Created array of graphs labels.
+        :param empty_count:
+            Number of empty columns (without labels)
+        :return: array (str)
+            Graphs labels
+        """
         row_captions = [str(g.start_day) for g in self.dynamic_graphs]
         row_captions[0] = "static"
         for e in range(empty_count):
             row_captions.insert(0, ",")
         return row_captions
 
-    def get_first_activity_date(self, author_id):
+    def _get_first_activity_date(self, author_id):
+        """
+        Checks author's first activity date and returns it.
+        :param author_id:
+            Id of author
+        :return: datetime.datetime
+            First activity date
+        """
         try:
             return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
                                                 % ("first_activity_date", author_id))[0][0]
         except IndexError:
             return None
 
-    def calculate_and_get_authors_static_neighborhood_size(self):
+    def _calculate_and_get_authors_static_neighborhood_size(self):
+        """
+        Calculates static neighborhood size and returns it.
+        :return: array (int)
+            Neighborhoods sizes
+        """
         if self.authors_static_neighborhood_size is None:
             calculated_value = MetricsType(MetricsType.NEIGHBORS_COUNT, GraphConnectionType.IN,
                                            GraphIterator(GraphIterator.GraphMode.STATIC))
             self.authors_static_neighborhood_size = \
                 {i: calculated_value.calculate(self.authors_ids[i],
-                                               self.get_first_activity_date(self.authors_ids[i]))[0]
+                                               self._get_first_activity_date(self.authors_ids[i]))[0]
                  for i in range(len(self.authors_ids))}
         return self.authors_static_neighborhood_size
