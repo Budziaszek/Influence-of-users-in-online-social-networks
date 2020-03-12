@@ -41,9 +41,8 @@ class PostgresDatabaseEngine(DatabaseEngine):
     def lst2pgarr(alist):
         return '{' + ','.join([str(x) for x in alist]) + '}'
 
-    def update_array_value_column(self, parameter_name, graph_mode, author_id, value):
+    def update_array_value_column(self, column_name, author_id, value):
         if self.cur is not None:
-            column_name = parameter_name + "_" + graph_mode
             if not self.does_column_exist("authors", column_name):
                 self.cur.execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", column_name))
             tmp_cur = self.db.cursor()
@@ -51,12 +50,25 @@ class PostgresDatabaseEngine(DatabaseEngine):
                             ("authors", column_name, self.lst2pgarr(value), author_id))
             self.db.commit()
 
-    def get_array_value_column(self, parameter_name, graph_mode, author_id):
+    def get_array_value_column(self, column_name, author_id, fun=None):
         if self.cur is not None:
-            column_name = parameter_name + "_" + graph_mode
             self.cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
             self.db.commit()
-            return self.cur.fetchall()[0][0]
+            if fun is not None:
+                return fun(self.cur.fetchall()[0][0])
+            else:
+                return self.cur.fetchall()[0][0]
+
+    def get_min_max_array_value_column(self, column_name, fun=None):
+        if self.cur is not None:
+            self.cur.execute("""SELECT %s FROM authors ORDER BY id""" % column_name)
+            self.db.commit()
+            data = [d[0][0] for d in self.cur.fetchall()]
+            if fun is not None and isinstance(data[0], list):
+                data = [fun(d) for d in data]
+                return min(data), max(data)
+            else:
+                return min(data), max(data)
 
     def does_column_exist(self, table, column):
         if self.cur is not None:

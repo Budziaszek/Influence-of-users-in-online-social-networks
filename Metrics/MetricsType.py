@@ -38,8 +38,9 @@ class MetricsType:
         self.graph_iterator.reset()
         while not self.graph_iterator.stop:
             graph = self.graph_iterator.next()
-            value = -1
-            if first_activity_date is None or first_activity_date <= graph.end_day:
+            value = None
+            end = graph[1].end_day if isinstance(graph, list) else graph.end_day
+            if first_activity_date is None or first_activity_date <= end:
                 if not isinstance(graph, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
                     graph = [graph, graph]
                 value = self._calculate_basic_type(self.connection_type, graph, user_id)
@@ -110,4 +111,4 @@ class MetricsType:
             return count/len(neighbors) if len(neighbors) > 0 else 0
         return count
 
-
+#

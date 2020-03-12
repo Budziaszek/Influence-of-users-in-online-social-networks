@@ -6,3 +6,9 @@ class HelpFunctions:
             return False
         return True
 
+    @staticmethod
+    def without_none(value):
+        if value is None:
+            return False
+        return True
+
