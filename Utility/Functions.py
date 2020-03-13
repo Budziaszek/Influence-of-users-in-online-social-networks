@@ -1,4 +1,5 @@
 from statistics import mean, stdev
+import numpy
 
 
 def without_zeros(value):
@@ -9,6 +10,12 @@ def without_zeros(value):
 
 def without_none(value):
     if value is None:
+        return False
+    return True
+
+
+def without_nan_none(value):
+    if value is None or value is numpy.nan:
         return False
     return True
 
@@ -39,6 +46,8 @@ def modify_data(data, data_condition_function, new_value=0):
         DataProcessing that will be modified
     :param data_condition_function:
         Function which defines if data should stay in array or be removed
+    :param new_value:
+        Defines new value.
     :return: array
         Modified array
     """

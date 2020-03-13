@@ -6,11 +6,8 @@ class SocialNetworkGraph:
     start_day = None
     end_day = None
 
-    def __init__(self, is_multi):
-        if is_multi is True:
-            self._G = nx.MultiDiGraph()
-        else:
-            self._G = nx.DiGraph()
+    def __init__(self):
+        self._G = nx.DiGraph()
         self.nodes = self._G.nodes
 
     def __getitem__(self, i):
@@ -20,17 +17,10 @@ class SocialNetworkGraph:
         return len(self._G)
 
     def add_edges(self, edges):
-        # Add multi edges
-        if self._G.is_multigraph():
-            self._G.add_edges_from(edges)
-        # Add single edge with number of connections as weight
-        else:
-            for edge in edges:
-                # print(edge)
-                data = self._G.get_edge_data(*edge)
-                self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
-        # nx.draw(self.G)
-        # plt.show()
+        for edge in edges:
+            # print(edge)
+            data = self._G.get_edge_data(*edge)
+            self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
 
     def successors(self, node):
         return self._G.successors(node)

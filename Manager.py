@@ -9,9 +9,10 @@ from sklearn.cluster import KMeans
 from statistics import mean, stdev
 
 from Metrics.MetricsProcessing.Histogram import Histogram
-from Metrics.MetricsType import GraphIterator, MetricsType
+from Metrics.MetricsType import MetricsType
 from Network.GraphConnectionType import GraphConnectionType
 from Metrics.MetricsProcessing.Prediction import Prediction
+from Network.GraphIterator import GraphIterator
 from Utility.Functions import make_data_positive, modify_data
 from Utility.ProgressBar import ProgressBar
 from DataProcessing.PostgresDatabaseEngine import PostgresDatabaseEngine
@@ -31,10 +32,12 @@ class Manager:
     mode = None
     authors_ids = None
     authors_names = None
+    colored = '\x1b[34m'
+    background = '\x1b[30;44m'
+    reset = '\x1b[0m'
 
     class CommentsReader:
         def __init__(self, method, include_responses_from_author):
-            self.histogram_managers = []
             self._method = method
             self._include_responses_from_author = include_responses_from_author
             self._does_exist = False
@@ -74,12 +77,14 @@ class Manager:
         :param test: bool, optional
             True - calculate model only for short period of time
         """
+        ProgressBar.set_colors(Manager.colored, Manager.reset)
         warnings.filterwarnings("ignore")
         self._comments_to_comments = self.CommentsReader(self._select_responses_to_comments, True)
         self._comments_to_posts = self.CommentsReader(self._select_responses_to_posts, True)
         self._comments_to_comments_from_others = self.CommentsReader(self._select_responses_to_comments, False)
         self._comments_to_posts_from_others = self.CommentsReader(self._select_responses_to_posts, False)
 
+        self.histogram_managers = []
         self._databaseEngine.connect(parameters)
         self._databaseEngine.create_first_activity_date_column()
         self._dates_range = self._get_dates_range()
@@ -121,8 +126,8 @@ class Manager:
 
         file_writer = self._initialize_file_writer(save_to_file, metrics)
         self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
-        bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode), "Calculated",
-                          len(self.authors_ids))
+        bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode),
+                          "Calculated", len(self.authors_ids))
         for i in range(len(self.authors_ids)):  # For each author (node)
             bar.next()
             first_activity_date = self._get_first_activity_date(self.authors_ids[i])
@@ -180,6 +185,7 @@ class Manager:
         :param parameters_names: array (string)
             Parameters included in clustering.
         """
+        print(Manager.background + 'Clustering: k-means (n_clusters= %s)' % str(n_clusters) + '\n' + Manager.reset)
         data = self._prepare_clustering_data(parameters_names)
         k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
         k_means.fit(data)
@@ -314,53 +320,44 @@ class Manager:
         self._set_comments_to_add()
         self.days = days
 
-    def _add_data_to_graphs(self, graph_type, is_multi):
+    def _add_data_to_graphs(self, graph_type):
         """
         Adds selected comments data to graphs.
         :param graph_type: string
             Defines whenever static graph or dynamics graphs should be created: "s" - static, "d" - dynamic, "sd" - both
-        :param is_multi: bool
-            True - multi-graph
-            False - single-edges graph
         """
         self.dynamic_graphs = []
         self.static_graph = None
         if graph_type is "sd":
             print("Creating static graph and dynamic graphs")
-            self._add_data_to_static_graph(is_multi)
-            self._add_data_to_dynamic_graphs(is_multi)
+            self._add_data_to_static_graph()
+            self._add_data_to_dynamic_graphs()
         elif graph_type is "d":
             print("Creating dynamic graphs")
-            self._add_data_to_dynamic_graphs(is_multi)
+            self._add_data_to_dynamic_graphs()
         elif graph_type is "s":
             print("Creating static graph")
-            self._add_data_to_static_graph(is_multi)
+            self._add_data_to_static_graph()
         else:
             raise Exception("ERROR - wrong graph value")
         print("Graphs created")
 
-    def _add_data_to_static_graph(self, is_multi):
+    def _add_data_to_static_graph(self):
         """
         Adds data to static graph - all days.
-        :param is_multi: bool
-            True - multi-graph
-            False - single-edges graph
         """
-        graph = SocialNetworkGraph(is_multi=is_multi)
+        graph = SocialNetworkGraph()
         for comments in self.comments_to_add:
             edges = numpy.concatenate(comments, axis=0)
             graph.add_edges(edges)
         graph.start_day, graph.end_day = self.days[0], self.days[-1]
         self.static_graph = graph
 
-    def _add_data_to_dynamic_graphs(self, is_multi):
+    def _add_data_to_dynamic_graphs(self):
         """
         Adds data to dynamic graphs - selected days only.
-        :param is_multi: bool
-            True - multi-graph
-            False - single-edges graph
         """
-        graph = SocialNetworkGraph(is_multi=is_multi)
+        graph = SocialNetworkGraph()
         step = self._number_of_new_days_in_interval
         interval_length = self._number_of_days_in_interval
         i = 0
@@ -373,7 +370,7 @@ class Manager:
                 graph.add_edges(edges)
             graph.start_day, graph.end_day = self.days[i], self.days[end]
             self.dynamic_graphs.append(graph)
-            graph = SocialNetworkGraph(is_multi=is_multi)
+            graph = SocialNetworkGraph()
             i += step
 
     def _create_graphs(self, mode):
@@ -443,7 +440,7 @@ class Manager:
             print('Parameters:')
             for i, parameters_name in enumerate(parameters_names):
                 values = data[indexes, i][0]
-                print("\t %s: min=%s max=%s mean=%s stdev=%s" %
+                print("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
                       (parameters_name, round(min(values), 3), round(max(values), 3),
                        round(mean(values), 3), round(stdev(values), 3)))
             print("Sample users:")
@@ -493,8 +490,8 @@ class Manager:
         :return: array (HistogramManager)
             Array of initialized HistogramManagers if initialization is required otherwise empty array
         """
+        self.histogram_managers = []
         if calculate_histogram:
-            self.histogram_managers = []
             self._calculate_and_get_authors_static_neighborhood_size()
             for data_function in data_functions:
                 self.histogram_managers.append(self.HistogramManager(data_function, value, x_scale, size_scale))

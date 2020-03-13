@@ -15,6 +15,11 @@ class ProgressBar:
         self.finish_communicate = finish_communicate
         self.next()
 
+    @staticmethod
+    def set_colors(unit_color, end_color):
+        ProgressBar.unitColor = unit_color
+        ProgressBar.endColor = end_color
+
     def next(self, i=1):
         if self.current == 0:
             print(self.start_communicate)

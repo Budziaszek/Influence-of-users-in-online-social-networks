@@ -25,9 +25,9 @@ class GraphConnectionType(Enum):
     def connections(self, graph, node):
         if not graph.has_node(node):
             return []
-        if self.value == self.OUT:
+        if self.value == self.OUT.value:
             return [graph[u][v]['weight'] for u, v in graph.out_edges(node)]
-        elif self.value == self.IN:
+        elif self.value == self.IN.value:
             return [graph[u][v]['weight'] for u, v in graph.in_edges(node)]
         else:
             return []

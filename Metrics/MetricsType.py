@@ -1,4 +1,4 @@
-from Network.GraphIterator import GraphIterator
+import numpy
 
 
 class MetricsType:
@@ -11,20 +11,17 @@ class MetricsType:
     DENSITY = "density"
     RECIPROCITY = "reciprocity"
     JACCARD_INDEX_NEIGHBORS = "jaccard_index"
-    PART_IN_UNION = "part_of_neighborhood"
-    COMPOSITION_NEIGHBORS = "composition_neighbors"
+    DIVIDE_NEIGHBORS = "divide_neighbors"
+    COMPOSITION_NEIGHBORS_COUNT = "composition_neighbors"
     COMPOSITION_NEIGHBORS_PERCENTS = "composition_neighbors_percents"
     NEIGHBORS_COUNT_DIFFERENCE = "neighbors_count_difference"
     NEW_NEIGHBORS = "new_neighbors"
 
-    # PART_IN_STATIC = "part_in_static"
-    # CUSTOM_COMPLEX = "custom_complex"
-
     def get_name(self):
-        v = self.value + "_" + self.graph_iterator.graph_mode
-        return v + "_" + str('_'.join([str(x) for x in self.data])) if self.data is not None else v
+        v = self.value + "_" + '_'.join([str(x) for x in self.graph_iterator.graph_mode])
+        return v + "_" + '_'.join([str(x) for x in self.data]) if self.data is not None else v
 
-    def __init__(self, value, connection_type, graph_iterator=GraphIterator(GraphIterator.GraphMode.ALL), data=None):
+    def __init__(self, value, connection_type, graph_iterator, data=None):
         self.connection_type = connection_type
         self.graph_iterator = graph_iterator
         self.is_complex = False
@@ -43,11 +40,11 @@ class MetricsType:
             if first_activity_date is None or first_activity_date <= end:
                 if not isinstance(graph, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
                     graph = [graph, graph]
-                value = self._calculate_basic_type(self.connection_type, graph, user_id)
+                value = self._calculate_for_user(self.connection_type, graph, user_id)
             data.append(value)
         return data
 
-    def _calculate_basic_type(self, connection_type, graph, user_id):
+    def _calculate_for_user(self, connection_type, graph, user_id):
         if self.value is self.NEIGHBORS_COUNT:
             return connection_type.neighbors_count(graph, user_id)
         if self.value is self.CONNECTIONS_COUNT:
@@ -59,16 +56,17 @@ class MetricsType:
             return dictionary[user_id] if user_id in dictionary else 0
         if self.value is self.JACCARD_INDEX_NEIGHBORS:
             return self._jaccard_index(connection_type, graph, user_id)
-        if self.value is self.COMPOSITION_NEIGHBORS:
+        if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
             return self._neighborhood_composition(connection_type, graph, user_id, self.data)
         if self.value is self.COMPOSITION_NEIGHBORS_PERCENTS:
             return self._neighborhood_composition(connection_type, graph, user_id, self.data, percent=True)
         if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
             return self._count_difference(connection_type, graph, user_id)
-        if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
-            return self._count_difference(connection_type, graph, user_id)
         if self.value is self.NEW_NEIGHBORS:
             return self._new_neighbors(connection_type, graph, user_id)
+        if self.value is self.DIVIDE_NEIGHBORS:
+            return connection_type.neighbors_count(graph[0], user_id) \
+                   / (connection_type.neighbors_count(graph[1], user_id) + 1)
         else:
             raise Exception("No metrics definition")
 
@@ -110,5 +108,3 @@ class MetricsType:
         if percent is True:
             return count/len(neighbors) if len(neighbors) > 0 else 0
         return count
-
-#
