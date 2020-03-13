@@ -22,7 +22,7 @@ class MetricsType:
 
     def get_name(self):
         v = self.value + "_" + self.graph_iterator.graph_mode
-        return v + "_" + str(self.data) if self.data is not None else v
+        return v + "_" + str('_'.join([str(x) for x in self.data])) if self.data is not None else v
 
     def __init__(self, value, connection_type, graph_iterator=GraphIterator(GraphIterator.GraphMode.ALL), data=None):
         self.connection_type = connection_type

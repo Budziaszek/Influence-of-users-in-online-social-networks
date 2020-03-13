@@ -50,7 +50,7 @@ class PostgresDatabaseEngine(DatabaseEngine):
                             ("authors", column_name, self.lst2pgarr(value), author_id))
             self.db.commit()
 
-    def get_array_value_column(self, column_name, author_id, fun=None):
+    def get_array_value_column_for_user(self, column_name, author_id, fun=None):
         if self.cur is not None:
             self.cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
             self.db.commit()
@@ -58,6 +58,15 @@ class PostgresDatabaseEngine(DatabaseEngine):
                 return fun(self.cur.fetchall()[0][0])
             else:
                 return self.cur.fetchall()[0][0]
+
+    def get_array_value_column(self, column_name, fun=None):
+        if self.cur is not None:
+            self.cur.execute("""SELECT %s FROM authors ORDER BY id""" % column_name)
+            self.db.commit()
+            if fun is not None:
+                return [fun(x[0]) for x in self.cur.fetchall()]
+            else:
+                return [x[0] for x in self.cur.fetchall()]
 
     def get_min_max_array_value_column(self, column_name, fun=None):
         if self.cur is not None:

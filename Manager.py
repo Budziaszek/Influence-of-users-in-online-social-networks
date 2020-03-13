@@ -4,20 +4,20 @@ import pickle
 import warnings
 from pathlib import Path
 import numpy
-from sklearn.preprocessing import StandardScaler, Normalizer
+from statsmodels.tsa.statespace.tools import diff
+from sklearn.cluster import KMeans
+from statistics import mean, stdev
 
 from Metrics.MetricsProcessing.Histogram import Histogram
 from Metrics.MetricsType import GraphIterator, MetricsType
 from Network.GraphConnectionType import GraphConnectionType
 from Metrics.MetricsProcessing.Prediction import Prediction
+from Utility.Functions import make_data_positive, modify_data
 from Utility.ProgressBar import ProgressBar
 from DataProcessing.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
 from DataProcessing.FileWriter import FileWriter
 from Network.NeighborhoodMode import NeighborhoodMode
-from statsmodels.tsa.statespace.tools import diff
-from sklearn.cluster import KMeans
-from statistics import mean
 
 
 class Manager:
@@ -34,6 +34,7 @@ class Manager:
 
     class CommentsReader:
         def __init__(self, method, include_responses_from_author):
+            self.histogram_managers = []
             self._method = method
             self._include_responses_from_author = include_responses_from_author
             self._does_exist = False
@@ -88,6 +89,128 @@ class Manager:
         self.authors_ids = self._get_authors("id")
         self.authors_names = self._get_authors("name")
         self.static_neighborhood_size = None
+
+    def calculate(self, mode, metrics,
+                  save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
+                  x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+        """
+        Calculates metrics values for each user and allows creating files and saving to database.
+        :param mode: NeighborhoodMode
+            Defines model mode (which comments should me included)
+        :param save_to_database: bool
+            True - save calculated value to database
+        :param metrics: MetricsType
+            Calculate function from given class is called
+        :param save_to_file: bool
+            True - save full data to file
+        :param predict: bool
+            True - predict time series
+        :param calculate_histogram: bool
+            True - calculate and save data as a histogram
+        :param x_scale: array (float)
+            Defines standard classes for the histogram
+        :param size_scale: array (int)
+            Defines size classes for the histogram
+        :param data_condition_function: function
+            Condition function defines which values should be removed to e.g. remove None values
+        :param data_functions: array (function)
+            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
+        """
+        if mode != self.mode:
+            self._create_graphs(mode)
+
+        file_writer = self._initialize_file_writer(save_to_file, metrics)
+        self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
+        bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode), "Calculated",
+                          len(self.authors_ids))
+        for i in range(len(self.authors_ids)):  # For each author (node)
+            bar.next()
+            first_activity_date = self._get_first_activity_date(self.authors_ids[i])
+            data = metrics.calculate(self.authors_ids[i], first_activity_date)
+            if predict:
+                self.predict(data, i)
+            data_modified = modify_data(data, data_condition_function) \
+                if calculate_histogram or save_to_file or save_to_database else []
+            if calculate_histogram:
+                self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
+            self._save_data_to_file(file_writer, i, data_modified)
+            if save_to_database:
+                self._save_to_database(metrics.get_name(), self.authors_ids[i], data_modified)
+        self._save_histograms_to_file(str(self.mode.value))
+        bar.finish()
+
+    def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
+                            x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+        """
+        Load data from database - only if metrics was calculated before. Result can be used in prediction or histogram.
+        :param metrics: MetricsType
+            Calculate function from given class is called
+        :param predict: bool
+            True - predict time series
+        :param calculate_histogram: bool
+            True - calculate and save data as a histogram
+        :param x_scale: array (float)
+            Defines standard classes for the histogram
+        :param size_scale: array (int)
+            Defines size classes for the histogram
+        :param data_condition_function: function
+            Condition function defines which values should be removed to e.g. remove None values
+        :param data_functions: array (function)
+            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
+        """
+        self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
+        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors_ids))
+        for i in range(len(self.authors_ids)):  # For each author (node)
+            bar.next()
+            data = self._databaseEngine.get_array_value_column_for_user(metrics.get_name(), self.authors_ids[i], None)
+            if predict:
+                self.predict(data, i)
+            data_modified = modify_data(data, data_condition_function) if calculate_histogram else []
+            if calculate_histogram:
+                self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
+        for histogram in self.histogram_managers:
+            histogram.save('output/' + str(self.mode.value) + "/")
+        bar.finish()
+
+    def k_means(self, n_clusters, parameters_names):
+        """
+        Performs k-means clustering and displays results.
+        :param n_clusters: int
+            Number of clusters.
+        :param parameters_names: array (string)
+            Parameters included in clustering.
+        """
+        data = self._prepare_clustering_data(parameters_names)
+        k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
+        k_means.fit(data)
+        self._display_clustering_results(parameters_names, k_means.predict(data), k_means.cluster_centers_, data)
+
+    def predict(self, data, author_i):
+        """
+        Predict time series.
+        :param data: array
+            DataProcessing used in prediction
+        :param author_i: int
+            Index of author
+        """
+        plot_data = []
+        title_data = []
+        interesting_ids = [1672, 440, 241, 2177, 797, 3621, 11, 2516]
+        # methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
+        parameters_versions = [i for i in range(3)]
+        data = make_data_positive(diff(data))
+        # print("Predict")
+        prediction = Prediction(data, self.authors_names[author_i])
+        for parameters_version in parameters_versions:
+            result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
+                                        Prediction.MAPE_error, parameters_version)
+            if len(plot_data) == 0:
+                plot_data.append((result[2].index, result[2]))
+                title_data.append("Original")
+            plot_data.append(result[1])
+            title_data.append(result[0] + str(parameters_version))
+        if self.authors_ids[author_i] in interesting_ids:
+            Prediction.plot("Prediction for " + self.authors_names[author_i], plot_data, title_data)
 
     def _get_dates_range(self):
         """
@@ -286,215 +409,82 @@ class Manager:
             self.static_graph = dictionary['static']
             self.dynamic_graphs = dictionary['dynamic']
 
-    def _save_graphs_to_file(self, graphs_file_name):
+    def _prepare_clustering_data(self, parameters_names):
         """
-        Saves graphs to file.
-        :param graphs_file_name: string
-            Filename in which graphs will be saved
+        Prepares data about parameters names in a form of an array, which can be used in clustering.
+        :param parameters_names: array (string)
+            Parameters included in clustering.
+        :return: numpy.array
+            Data for clustering.
         """
-        with open(graphs_file_name, 'wb') as file:
-            pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
-
-    def k_means(self, n_clusters, parameters_names):
-        data = []
-        minimum, maximum = {}, {}
+        data = {}
         for parameter_name in parameters_names:
-            minimum[parameter_name], maximum[parameter_name] = self._databaseEngine.get_min_max_array_value_column(
-                parameter_name, mean)
-        for i in range(len(self.authors_ids)):  # For each author (node)
-            author_data = []
-            for parameter_name in parameters_names:
-                v = self._databaseEngine.get_array_value_column(parameter_name, self.authors_ids[i], mean)
-                v = (v - minimum[parameter_name])/(maximum[parameter_name] - minimum[parameter_name])
-                author_data.append(v)
-            data.append(author_data)
-        data = numpy.array(data)
-        labels = numpy.array(self.authors_names)
-        ids = numpy.array(self.authors_ids)
-        kmeans = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
-        # data_modified = StandardScaler().fit_transform(data)
-        # data_modified = Normalizer().fit_transform(data)
-        kmeans.fit(data)
-        pred_classes = kmeans.predict(data)
+            data[parameter_name] = numpy.array(self._databaseEngine.get_array_value_column(parameter_name, mean))
+            minimum, maximum = min(data[parameter_name]), max(data[parameter_name])
+            data[parameter_name] = [(x - minimum) / (maximum - minimum) for x in data[parameter_name]]
+        return numpy.column_stack(data[parameter_name] for parameter_name in parameters_names)
 
-        for cluster in range(n_clusters):
-            names = labels[numpy.where(pred_classes == cluster)]
-            users_ids = ids[numpy.where(pred_classes == cluster)]
-            print('cluster: ', cluster, [round(c, 2) for c in kmeans.cluster_centers_[cluster]], 'users: ', len(names))
-            print("Sample users: ")
-            for i, user in enumerate(names):
-                if i <= 10:
-                    parameters = []
-                    for parameter_name in parameters_names:
-                        v = self._databaseEngine.get_array_value_column(parameter_name, users_ids[i], mean)
-                        parameters.append(v)
-                    print(user, [round(p, 3) for p in parameters])
+    def _display_clustering_results(self, parameters_names, classes, centers, data):
+        """
+        Displays results of clustering.
+        :param parameters_names: array (string)
+            Parameters included in clustering.
+        :param classes: array
+            Classes created
+        :param centers: array
+            Centers of clusters
+        """
+        for cluster in range(len(centers)):
+            indexes = numpy.where(classes == cluster)
+            names = numpy.array(self.authors_names)[indexes]
+            users_ids = numpy.array(self.authors_ids)[indexes]
+            print('Cluster: %s' % cluster)
+            print('\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(names)))
+            print('Parameters:')
+            for i, parameters_name in enumerate(parameters_names):
+                values = data[indexes, i][0]
+                print("\t %s: min=%s max=%s mean=%s stdev=%s" %
+                      (parameters_name, round(min(values), 3), round(max(values), 3),
+                       round(mean(values), 3), round(stdev(values), 3)))
+            print("Sample users:")
+            for i in range(min(len(names), 10)):
+                parameters = [self._databaseEngine.get_array_value_column_for_user(parameter_name, users_ids[i], mean)
+                              for parameter_name in parameters_names]
+                print("\t %s: %s" % (names[i], [round(p, 3) for p in parameters]))
+            print()
 
-    def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
-                            x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
-        """
-        Load data from database - only if metrics was calculated before. Result can be used in prediction or histogram.
-        :param metrics: MetricsType
-            Calculate function from given class is called
-        :param predict: bool
-            True - predict time series
-        :param calculate_histogram: bool
-            True - calculate and save data as a histogram
-        :param x_scale: array (float)
-            Defines standard classes for the histogram
-        :param size_scale: array (int)
-            Defines size classes for the histogram
-        :param data_condition_function: function
-            Condition function defines which values should be removed to e.g. remove None values
-        :param data_functions: array (function)
-            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
-        """
-        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, metrics,
-                                                                 x_scale, size_scale)
-        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors_ids))
-        for i in range(len(self.authors_ids)):  # For each author (node)
-            bar.next()
-            data = self._databaseEngine.get_array_value_column(metrics.get_name(), self.authors_ids[i], None)
-            if predict:
-                self.predict(data, i)
-            data_modified = self._modify_data(data, data_condition_function) if calculate_histogram else []
-            if calculate_histogram:
-                self._add_data_to_histograms(histogram_managers, self.static_neighborhood_size[i], data_modified)
-        self._save_histograms_to_file(str(self.mode.value), histogram_managers)
-        bar.finish()
-
-    def calculate(self, mode, metrics,
-                  save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
-                  x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
-        """
-        Calculates metrics values for each user and allows creating files and saving to database.
-        :param mode: NeighborhoodMode
-            Defines model mode (which comments should me included)
-        :param save_to_database: bool
-            True - save calculated value to database
-        :param metrics: MetricsType
-            Calculate function from given class is called
-        :param save_to_file: bool
-            True - save full data to file
-        :param predict: bool
-            True - predict time series
-        :param calculate_histogram: bool
-            True - calculate and save data as a histogram
-        :param x_scale: array (float)
-            Defines standard classes for the histogram
-        :param size_scale: array (int)
-            Defines size classes for the histogram
-        :param data_condition_function: function
-            Condition function defines which values should be removed to e.g. remove None values
-        :param data_functions: array (function)
-            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
-        """
-        if mode != self.mode:
-            self._create_graphs(mode)
-
-        file_writer = self._initialize_file_writer(save_to_file, metrics)
-        histogram_managers = self._initialize_histogram_managers(calculate_histogram, data_functions, metrics,
-                                                                 x_scale, size_scale)
-        bar = ProgressBar("Calculating %s (%s)" % (metrics.value, self.mode), "Calculated",
-                          len(self.authors_ids))
-        for i in range(len(self.authors_ids)):  # For each author (node)
-            bar.next()
-            first_activity_date = self._get_first_activity_date(self.authors_ids[i])
-            data = metrics.calculate(self.authors_ids[i], first_activity_date)
-            if predict:
-                self.predict(data, i)
-            data_modified = self._modify_data(data, data_condition_function) \
-                if calculate_histogram or save_to_file or save_to_database else []
-            if calculate_histogram:
-                self._add_data_to_histograms(histogram_managers, self.static_neighborhood_size[i], data_modified)
-            self._save_data_to_file(file_writer, self.authors_ids[i], self.authors_names[i], data_modified)
-            if save_to_database:
-                self._save_to_database(metrics.get_name(), self.authors_ids[i], data_modified)
-
-        self._save_histograms_to_file(str(self.mode.value), histogram_managers)
-        bar.finish()
-
-    def _save_to_database(self, column_name, author_id, data):
-        """
-        Saves data for one author to database.
-        :param author_id: int
-            Id of the author to whom the data refer
-        :param data: array (float)
-            Calculated metrics values
-        """
-        self._databaseEngine.update_array_value_column(column_name, author_id, data)
-
-    @staticmethod
-    def _save_histograms_to_file(mode_name, histogram_managers):
-        """
-        Saves histogram data to file.
-        :param mode_name: str
-            Mode name - folder
-        :param histogram_managers: array (HistogramManager)
-            Histogram managers used for saving data
-        :return:
-        """
-        for histogram in histogram_managers:
-            histogram.save('output/' + mode_name + "/")
-
-    @staticmethod
-    def _save_data_to_file(file_writer, author_id, author_name, data):
+    def _save_data_to_file(self, file_writer, author_index, data):
         """
         Saves data to file.
         :param file_writer: FileWriter
             FileWriter used to save data
-        :param author_id: int
-            Id of the author to whom the data refer
-        :param author_name: str
-            Name of the author to whom the data refer
+        :param author_index: int
+            Index of the author in names and ids arrays
         :param data: array (float)
             Author's data
         """
         if file_writer is not None:
-            file_writer.write_row_to_file([author_id, author_name, *data])
+            file_writer.write_row_to_file([self.authors_ids[author_index], self.authors_names[author_index], *data])
 
-    @staticmethod
-    def _add_data_to_histograms(histogram_managers, size, data):
+    def _add_data_to_histograms(self, size, data):
         """
         Adds data to histograms.
-        :param histogram_managers: array (HistogramManager)
-            Histogram managers used for saving data
         :param size: array (int)
             Neighborhood size
         :param data:
             DataProcessing to add
         """
-        for h in histogram_managers:
+        for h in self.histogram_managers:
             h.add_data(size, data)
 
-    @staticmethod
-    def _modify_data(data, data_condition_function, new_value=0):
-        """
-        Removes unwanted values from data array.
-        :param data: array
-            DataProcessing that will be modified
-        :param data_condition_function:
-            Function which defines if data should stay in array or be removed
-        :return: array
-            Modified array
-        """
-        data_modified = []
-        for d in data:
-            if d is not None and (data_condition_function is None or data_condition_function(d)):
-                data_modified.append(d)
-            else:
-                data_modified.append(new_value)
-        return data_modified
-
-    def _initialize_histogram_managers(self, calculate_histogram, data_functions, calculated_value, x_scale,
-                                       size_scale):
+    def _initialize_histogram_managers(self, calculate_histogram, data_functions, value, x_scale, size_scale):
         """
         Initializes array of HistogramManagers if required.
         :param calculate_histogram: bool
             True - initialization required
         :param data_functions: array (function)
             Function used for data aggregation
-        :param calculated_value: MetricsType
+        :param value: MetricsType
             Metrics that is currently calculated
         :param x_scale: array (float)
             Defines standard classes for the histogram
@@ -504,12 +494,10 @@ class Manager:
             Array of initialized HistogramManagers if initialization is required otherwise empty array
         """
         if calculate_histogram:
-            histogram_managers = []
+            self.histogram_managers = []
             self._calculate_and_get_authors_static_neighborhood_size()
             for data_function in data_functions:
-                histogram_managers.append(self.HistogramManager(data_function, calculated_value, x_scale, size_scale))
-            return histogram_managers
-        return []
+                self.histogram_managers.append(self.HistogramManager(data_function, value, x_scale, size_scale))
 
     def _initialize_file_writer(self, save_to_file, calculated_value):
         """
@@ -527,45 +515,6 @@ class Manager:
             file_writer.set_all(self.mode.value, file_name, self._get_graphs_labels(3))
             return file_writer
         return None
-
-    def predict(self, data, author_i):
-        """
-        Predict time series.
-        :param data: array
-            DataProcessing used in prediction
-        :param author_i: int
-            Index of author
-        """
-        plot_data = []
-        title_data = []
-        interesting_ids = [1672, 440, 241, 2177, 797, 3621, 11, 2516]
-        methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
-        parameters_versions = [i for i in range(3)]
-        data = self._make_data_positive(diff(data))
-        # print("Predict")
-        prediction = Prediction(data, self.authors_names[author_i])
-        for parameters_version in parameters_versions:
-            result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
-                                        Prediction.MAPE_error, parameters_version)
-            if len(plot_data) == 0:
-                plot_data.append((result[2].index, result[2]))
-                title_data.append("Original")
-            plot_data.append(result[1])
-            title_data.append(result[0] + str(parameters_version))
-        if self.authors_ids[author_i] in interesting_ids:
-            Prediction.plot("Prediction for " + self.authors_names[author_i], plot_data, title_data)
-
-    @staticmethod
-    def _make_data_positive(data):
-        """
-        Adds absolute value of data minimum to each element in order to make data strictly positive.
-        :param data: array
-            DataProcessing to transform
-        :return: array
-            Transformed data
-        """
-        minimum = min(data)
-        return data + abs(minimum) + 1
 
     def _get_authors(self, parameter):
         """
@@ -619,3 +568,31 @@ class Manager:
                                                self._get_first_activity_date(self.authors_ids[i]))[0]
                  for i in range(len(self.authors_ids))}
         return self.static_neighborhood_size
+
+    def _save_to_database(self, column_name, author_id, data):
+        """
+        Saves data for one author to database.
+        :param author_id: int
+            Id of the author to whom the data refer
+        :param data: array (float)
+            Calculated metrics values
+        """
+        self._databaseEngine.update_array_value_column(column_name, author_id, data)
+
+    def _save_graphs_to_file(self, graphs_file_name):
+        """
+        Saves graphs to file.
+        :param graphs_file_name: string
+            Filename in which graphs will be saved
+        """
+        with open(graphs_file_name, 'wb') as file:
+            pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
+
+    def _save_histograms_to_file(self, mode_name):
+        """
+        Saves histogram data to file.
+        :param mode_name: str
+            Mode name - folder
+        """
+        for histogram in self.histogram_managers:
+            histogram.save('output/' + mode_name + "/")
