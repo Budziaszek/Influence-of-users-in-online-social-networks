@@ -23,7 +23,17 @@ class FileWriter:
             writer = csv.writer(f, delimiter=',')
             writer.writerow(data)
 
-    def set_all(self, mode, file_name, labels):
+    def write_split_row_to_file(self, data):
+        row = []
+        for d in data:
+            if isinstance(d, list):
+                row.extend(d)
+            else:
+                row.append(d)
+        self.write_row_to_file(row)
+
+    def set_all(self, mode, file_name, labels=None):
         self.set_path(mode, file_name)
         self.clean_file()
-        self.write_row_to_file(labels)
+        if labels is not None:
+            self.write_row_to_file(labels)

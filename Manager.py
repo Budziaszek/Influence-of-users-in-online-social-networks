@@ -2,6 +2,7 @@ import datetime as dt
 import os
 import pickle
 import warnings
+from collections import defaultdict
 from pathlib import Path
 import numpy
 from statsmodels.tsa.statespace.tools import diff
@@ -180,16 +181,17 @@ class Manager:
     def k_means(self, n_clusters, parameters_names):
         """
         Performs k-means clustering and displays results.
+        :param save:
         :param n_clusters: int
             Number of clusters.
         :param parameters_names: array (string)
             Parameters included in clustering.
         """
         print(Manager.background + 'Clustering: k-means (n_clusters= %s)' % str(n_clusters) + '\n' + Manager.reset)
-        data = self._prepare_clustering_data(parameters_names)
+        data, _data = self._prepare_clustering_data(parameters_names)
         k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
         k_means.fit(data)
-        self._display_clustering_results(parameters_names, k_means.predict(data), k_means.cluster_centers_, data)
+        self._display_clustering_results(parameters_names, k_means.predict(data), k_means.cluster_centers_, _data)
 
     def predict(self, data, author_i):
         """
@@ -415,11 +417,18 @@ class Manager:
             Data for clustering.
         """
         data = {}
+        _data = {}
         for parameter_name in parameters_names:
             data[parameter_name] = numpy.array(self._databaseEngine.get_array_value_column(parameter_name, mean))
             minimum, maximum = min(data[parameter_name]), max(data[parameter_name])
+            _data[parameter_name] = data[parameter_name].copy()
             data[parameter_name] = [(x - minimum) / (maximum - minimum) for x in data[parameter_name]]
-        return numpy.column_stack(data[parameter_name] for parameter_name in parameters_names)
+        return numpy.column_stack(data[parameter_name] for parameter_name in parameters_names), numpy.column_stack(
+            _data[parameter_name] for parameter_name in parameters_names)
+
+    class Cluster:
+        def __init__(self):
+            pass
 
     def _display_clustering_results(self, parameters_names, classes, centers, data):
         """
@@ -431,24 +440,46 @@ class Manager:
         :param centers: array
             Centers of clusters
         """
+        save = defaultdict(list)
+        file_writer = FileWriter()
+        file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
         for cluster in range(len(centers)):
             indexes = numpy.where(classes == cluster)
             names = numpy.array(self.authors_names)[indexes]
             users_ids = numpy.array(self.authors_ids)[indexes]
+
             print('Cluster: %s' % cluster)
             print('\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(names)))
             print('Parameters:')
-            for i, parameters_name in enumerate(parameters_names):
+            save['stats'].extend(['min', 'max', 'mean', 'stdev'])
+            empty_stats = ['' for _ in range(3)]
+            save['cluster'].append(cluster)
+            save['cluster'].extend(empty_stats)
+            save['size'].append(len(names))
+            save['size'].extend(empty_stats)
+
+            for i, parameter_name in enumerate(parameters_names):
                 values = data[indexes, i][0]
+                save[parameter_name].extend([round(min(values), 3), round(max(values), 3),
+                                             round(mean(values), 3), round(stdev(values), 3)])
                 print("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
-                      (parameters_name, round(min(values), 3), round(max(values), 3),
+                      (parameter_name, round(min(values), 3), round(max(values), 3),
                        round(mean(values), 3), round(stdev(values), 3)))
             print("Sample users:")
+            s = []
             for i in range(min(len(names), 10)):
+                s.append(names[i])
                 parameters = [self._databaseEngine.get_array_value_column_for_user(parameter_name, users_ids[i], mean)
                               for parameter_name in parameters_names]
                 print("\t %s: %s" % (names[i], [round(p, 3) for p in parameters]))
             print()
+            save['sample'].extend([s, *empty_stats])
+        file_writer.write_split_row_to_file(['cluster', save['cluster']])
+        file_writer.write_split_row_to_file(['size', save['size']])
+        file_writer.write_split_row_to_file(['stats', save['stats']])
+        for parameter_name in parameters_names:
+            file_writer.write_split_row_to_file([parameter_name, save[parameter_name]])
+        file_writer.write_split_row_to_file(['sample', save['sample']])
 
     def _save_data_to_file(self, file_writer, author_index, data):
         """

@@ -37,7 +37,6 @@ new_neighbors = MetricsType(MetricsType.NEW_NEIGHBORS, c_in, curr_next)
 
 dynamic_divided_by_static = MetricsType(MetricsType.DIVIDE_NEIGHBORS, c_in, dynamic_static)
 
-
 modes_to_calculate = [
     NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS
     # Mode.COMMENTS_TO_COMMENTS_FROM_OTHERS,
@@ -93,22 +92,27 @@ functions = [
 # x_scale=np.arange(start=0, stop=1.01, step=0.05)
 # manager.process_loaded_data(metrics=value, predict=True)
 
-p = ['neighbors_count_static',
-     'neighbors_count_dynamic',
-     'jaccard_index_static',
-     'jaccard_index_dynamic_curr_next',
-     'connections_count_dynamic',
-     'connections_count_static',
-     'neighbors_count_difference_dynamic_curr_next',
-     'new_neighbors_dynamic_curr_next',
-     'composition_neighbors_percents_static_1001_6000',
-     'composition_neighbors_percents_static_501_1000',
-     'composition_neighbors_percents_static_101_500',
-     'composition_neighbors_percents_static_0_100',
-     'density_static',
-     'reciprocity_static',
-     'divide_neighbors_dynamic_static'
-     ]
+p = [
+    'connections_count_dynamic',
+    'connections_count_static',
+
+    'neighbors_count_dynamic',
+    'neighbors_count_static',
+
+    'composition_neighbors_percents_static_1001_6000',
+    'composition_neighbors_percents_static_501_1000',
+    'composition_neighbors_percents_static_101_500',
+    'composition_neighbors_percents_static_0_100',
+    'jaccard_index_static',
+
+    'jaccard_index_dynamic_curr_next',
+    'neighbors_count_difference_dynamic_curr_next',
+    'new_neighbors_dynamic_curr_next',
+    'divide_neighbors_dynamic_static',
+
+    'density_static',
+    'reciprocity_static',
+]
 n_clusters = [3, 6, 10]
 
 for n in n_clusters:
