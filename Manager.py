@@ -10,7 +10,7 @@ from sklearn.cluster import KMeans
 from statistics import mean, stdev
 
 from Metrics.MetricsProcessing.Histogram import Histogram
-from Metrics.MetricsType import MetricsType
+from Metrics.Metrics import Metrics
 from Network.GraphConnectionType import GraphConnectionType
 from Metrics.MetricsProcessing.Prediction import Prediction
 from Network.GraphIterator import GraphIterator
@@ -141,7 +141,7 @@ class Manager:
                 self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
             self._save_data_to_file(file_writer, i, data_modified)
             if save_to_database:
-                self._save_to_database(metrics.get_name(), self.authors_ids[i], data_modified)
+                self._save_to_database(self.mode.short() + "_" + metrics.get_name(), self.authors_ids[i], data_modified)
         self._save_histograms_to_file(str(self.mode.value))
         bar.finish()
 
@@ -178,20 +178,20 @@ class Manager:
             histogram.save('output/' + str(self.mode.value) + "/")
         bar.finish()
 
-    def k_means(self, n_clusters, parameters_names):
+    def k_means(self, n_clusters, parameters):
         """
         Performs k-means clustering and displays results.
         :param save:
         :param n_clusters: int
             Number of clusters.
-        :param parameters_names: array (string)
+        :param parameters: array (string)
             Parameters included in clustering.
         """
         print(Manager.background + 'Clustering: k-means (n_clusters= %s)' % str(n_clusters) + '\n' + Manager.reset)
-        data, _data = self._prepare_clustering_data(parameters_names)
+        data, _data = self._prepare_clustering_data(parameters)
         k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
         k_means.fit(data)
-        self._display_clustering_results(parameters_names, k_means.predict(data), k_means.cluster_centers_, _data)
+        self._save_clusters([p[0] for p in parameters], k_means.predict(data), k_means.cluster_centers_, _data)
 
     def predict(self, data, author_i):
         """
@@ -408,29 +408,29 @@ class Manager:
             self.static_graph = dictionary['static']
             self.dynamic_graphs = dictionary['dynamic']
 
-    def _prepare_clustering_data(self, parameters_names):
+    def _prepare_clustering_data(self, parameters):
         """
         Prepares data about parameters names in a form of an array, which can be used in clustering.
-        :param parameters_names: array (string)
+        :param parameters: array (string)
             Parameters included in clustering.
         :return: numpy.array
             Data for clustering.
         """
         data = {}
         _data = {}
-        for parameter_name in parameters_names:
-            data[parameter_name] = numpy.array(self._databaseEngine.get_array_value_column(parameter_name, mean))
-            minimum, maximum = min(data[parameter_name]), max(data[parameter_name])
-            _data[parameter_name] = data[parameter_name].copy()
-            data[parameter_name] = [(x - minimum) / (maximum - minimum) for x in data[parameter_name]]
-        return numpy.column_stack(data[parameter_name] for parameter_name in parameters_names), numpy.column_stack(
-            _data[parameter_name] for parameter_name in parameters_names)
+        for parameter in parameters:
+            name, weight = parameter
+            data[name] = numpy.array(self._databaseEngine.get_array_value_column(name, mean))
+            minimum, maximum = min(data[name]), max(data[name])
+            _data[name] = data[name].copy()
+            data[name] = [(x - minimum) / (maximum - minimum) * weight for x in data[name]]
+        return numpy.column_stack(data[p[0]] for p in parameters), numpy.column_stack(_data[p[0]] for p in parameters)
 
     class Cluster:
         def __init__(self):
             pass
 
-    def _display_clustering_results(self, parameters_names, classes, centers, data):
+    def _save_clusters(self, parameters_names, classes, centers, data):
         """
         Displays results of clustering.
         :param parameters_names: array (string)
@@ -443,6 +443,12 @@ class Manager:
         save = defaultdict(list)
         file_writer = FileWriter()
         file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
+
+        interesting_users = self._databaseEngine.execute("""SELECT id 
+                                                            FROM authors 
+                                                            ORDER BY po_in_neighbors_count_static DESC
+                                                            LIMIT 50""")
+
         for cluster in range(len(centers)):
             indexes = numpy.where(classes == cluster)
             names = numpy.array(self.authors_names)[indexes]
@@ -460,18 +466,23 @@ class Manager:
 
             for i, parameter_name in enumerate(parameters_names):
                 values = data[indexes, i][0]
+                std = stdev(values) if len(values) > 1 else 0
                 save[parameter_name].extend([round(min(values), 3), round(max(values), 3),
-                                             round(mean(values), 3), round(stdev(values), 3)])
+                                             round(mean(values), 3), round(std, 3)])
                 print("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
                       (parameter_name, round(min(values), 3), round(max(values), 3),
                        round(mean(values), 3), round(stdev(values), 3)))
+
             print("Sample users:")
             s = []
-            for i in range(min(len(names), 10)):
-                s.append(names[i])
-                parameters = [self._databaseEngine.get_array_value_column_for_user(parameter_name, users_ids[i], mean)
-                              for parameter_name in parameters_names]
-                print("\t %s: %s" % (names[i], [round(p, 3) for p in parameters]))
+
+            for i in range(len(names)):
+                if users_ids[i] in interesting_users:
+                    s.append(names[i])
+                    parameters = [
+                        self._databaseEngine.get_array_value_column_for_user(parameter_name, users_ids[i], mean)
+                        for parameter_name in parameters_names]
+                    print("\t %s: %s" % (names[i], [round(p, 3) for p in parameters]))
             print()
             save['sample'].extend([s, *empty_stats])
         file_writer.write_split_row_to_file(['cluster', save['cluster']])
@@ -589,8 +600,8 @@ class Manager:
             Neighborhoods sizes
         """
         if self.static_neighborhood_size is None:
-            calculated_value = MetricsType(MetricsType.NEIGHBORS_COUNT, GraphConnectionType.IN,
-                                           GraphIterator(GraphIterator.GraphMode.STATIC))
+            calculated_value = Metrics(Metrics.DEGREE_CENTRALITY, GraphConnectionType.IN,
+                                       GraphIterator(GraphIterator.GraphMode.STATIC))
             self.static_neighborhood_size = \
                 {i: calculated_value.calculate(self.authors_ids[i],
                                                self._get_first_activity_date(self.authors_ids[i]))[0]

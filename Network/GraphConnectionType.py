@@ -6,7 +6,7 @@ class GraphConnectionType(Enum):
     OUT = "out"
     IN_OUT = "in+out"
 
-    def neighbors_count(self, graph, node):
+    def degree_centrality(self, graph, node):
         return len(self.neighbors(graph, node))
 
     def neighbors(self, graph, node, value=None):

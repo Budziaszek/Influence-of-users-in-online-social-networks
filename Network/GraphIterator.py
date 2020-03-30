@@ -26,8 +26,7 @@ class GraphIterator:
         if GraphIterator.static_graph is None or GraphIterator.dynamic_graphs is None:
             raise Exception("GraphIterator without graphs set.")
         dynamic_count = self.graph_mode.count(GraphIterator.GraphMode.DYNAMIC)
-        dynamic_curr_next_count =  self.graph_mode.count(
-                GraphIterator.GraphMode.DYNAMIC_CURR_NEXT)
+        dynamic_curr_next_count = self.graph_mode.count(GraphIterator.GraphMode.DYNAMIC_CURR_NEXT)
         if dynamic_count + dynamic_curr_next_count > 1:
             raise Exception("Incorrect GraphIterator mode configuration. Only one type of dynamic mode is allowed.")
         graphs = []
@@ -41,7 +40,9 @@ class GraphIterator:
                 graphs.extend([GraphIterator.dynamic_graphs[self.current_id],
                                GraphIterator.dynamic_graphs[self.current_id + 1]])
                 self.current_id += 1
-            if self.current_id >= len(GraphIterator.dynamic_graphs) or dynamic_count + dynamic_curr_next_count == 0:
+            if self.current_id >= len(GraphIterator.dynamic_graphs) \
+                    or dynamic_curr_next_count > 0 and self.current_id + 1 >= len(GraphIterator.dynamic_graphs) \
+                    or dynamic_count + dynamic_curr_next_count == 0:
                 self.stop = True
         return graphs if len(graphs) > 1 else graphs[0]
 

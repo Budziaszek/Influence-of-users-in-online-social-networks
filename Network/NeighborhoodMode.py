@@ -10,6 +10,20 @@ class NeighborhoodMode(Enum):
     COMMENTS_TO_POSTS = "comments_to_posts"
     COMMENTS_TO_COMMENTS = "comments_to_comment"
 
+    def short(self):
+        if self.value is "comments_to_posts_and_comments_from_others":
+            return "PCO"
+        if self.value is "comments_to_posts_from_others":
+            return "PO"
+        if self.value is "comments_to_comment_from_others":
+            return "CO"
+        if self.value is "comments_to_posts_and_comments":
+            return "PC"
+        if self.value is "comments_to_posts":
+            return "P"
+        if self.value is "comments_to_comment":
+            return "C"
+
     def __init__(self, *args):
         super().__init__()
         if self.value is "comments_to_posts_and_comments_from_others":

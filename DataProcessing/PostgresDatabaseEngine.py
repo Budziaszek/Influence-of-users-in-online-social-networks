@@ -44,7 +44,10 @@ class PostgresDatabaseEngine(DatabaseEngine):
     def update_array_value_column(self, column_name, author_id, value):
         if self.cur is not None:
             if not self.does_column_exist("authors", column_name):
-                self.cur.execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", column_name))
+                try:
+                    self.cur.execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", column_name))
+                except psycopg2.Error:
+                    self.db.rollback()
             tmp_cur = self.db.cursor()
             tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s""" %
                             ("authors", column_name, self.lst2pgarr(value), author_id))
