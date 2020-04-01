@@ -10,8 +10,6 @@ from sklearn.cluster import KMeans
 from statistics import mean, stdev
 
 from Metrics.MetricsProcessing.Histogram import Histogram
-from Metrics.Metrics import Metrics
-from Network.GraphConnectionType import GraphConnectionType
 from Metrics.MetricsProcessing.Prediction import Prediction
 from Network.GraphIterator import GraphIterator
 from Utility.Functions import make_data_positive, modify_data
@@ -92,58 +90,82 @@ class Manager:
         self._days_count = (self._dates_range[1] - self._dates_range[0]).days
         if test is True:
             self._days_count = self._number_of_days_in_interval * 5
-        self.authors_ids = self._get_authors("id")
-        self.authors_names = self._get_authors("name")
+        self.authors = self._get_authors_parameter("name")
         self.static_neighborhood_size = None
 
-    def calculate(self, mode, metrics,
-                  save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
-                  x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
-        """
-        Calculates metrics values for each user and allows creating files and saving to database.
-        :param mode: NeighborhoodMode
-            Defines model mode (which comments should me included)
-        :param save_to_database: bool
-            True - save calculated value to database
-        :param metrics: MetricsType
-            Calculate function from given class is called
-        :param save_to_file: bool
-            True - save full data to file
-        :param predict: bool
-            True - predict time series
-        :param calculate_histogram: bool
-            True - calculate and save data as a histogram
-        :param x_scale: array (float)
-            Defines standard classes for the histogram
-        :param size_scale: array (int)
-            Defines size classes for the histogram
-        :param data_condition_function: function
-            Condition function defines which values should be removed to e.g. remove None values
-        :param data_functions: array (function)
-            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
-        """
+    def new_calculate(self, mode, metrics,
+                      save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
+                      x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
         if mode != self.mode:
             self._create_graphs(mode)
-
         file_writer = self._initialize_file_writer(save_to_file, metrics)
         self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
-        bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode),
-                          "Calculated", len(self.authors_ids))
-        for i in range(len(self.authors_ids)):  # For each author (node)
+
+        print("Calculating %s (%s)" % (metrics.get_name(), self.mode))
+        first_activity_dates = self._get_first_activity_dates()
+        data = metrics.new_calculate(self.authors.keys(), first_activity_dates)
+        print("Calculated")
+        bar = ProgressBar("Processing %s (%s)" % (metrics.get_name(), self.mode), "Processed", len(self.authors.keys()))
+        for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
             bar.next()
-            first_activity_date = self._get_first_activity_date(self.authors_ids[i])
-            data = metrics.calculate(self.authors_ids[i], first_activity_date)
+            d = data[user_id]
             if predict:
-                self.predict(data, i)
-            data_modified = modify_data(data, data_condition_function) \
-                if calculate_histogram or save_to_file or save_to_database else []
-            if calculate_histogram:
-                self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
-            self._save_data_to_file(file_writer, i, data_modified)
+                self.predict(d, i)
+            m = modify_data(d, data_condition_function) if calculate_histogram or save_to_file or save_to_database else []
+            self._save_data_to_file(file_writer, i, m)
             if save_to_database:
-                self._save_to_database(self.mode.short() + "_" + metrics.get_name(), self.authors_ids[i], data_modified)
+                self._save_to_database(self.mode.short() + "_" + metrics.get_name(), user_id, m)
         self._save_histograms_to_file(str(self.mode.value))
         bar.finish()
+
+    # def calculate(self, mode, metrics,
+    #               save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
+    #               x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+    #     """
+    #     Calculates metrics values for each user and allows creating files and saving to database.
+    #     :param mode: NeighborhoodMode
+    #         Defines model mode (which comments should me included)
+    #     :param save_to_database: bool
+    #         True - save calculated value to database
+    #     :param metrics: MetricsType
+    #         Calculate function from given class is called
+    #     :param save_to_file: bool
+    #         True - save full data to file
+    #     :param predict: bool
+    #         True - predict time series
+    #     :param calculate_histogram: bool
+    #         True - calculate and save data as a histogram
+    #     :param x_scale: array (float)
+    #         Defines standard classes for the histogram
+    #     :param size_scale: array (int)
+    #         Defines size classes for the histogram
+    #     :param data_condition_function: function
+    #         Condition function defines which values should be removed to e.g. remove None values
+    #     :param data_functions: array (function)
+    #         DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
+    #     """
+    #     if mode != self.mode:
+    #         self._create_graphs(mode)
+    #
+    #     file_writer = self._initialize_file_writer(save_to_file, metrics)
+    #     self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
+    #     bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode),
+    #                       "Calculated", len(self.authors_ids))
+    #     for i in range(len(self.authors_ids)):  # For each author (node)
+    #         bar.next()
+    #         first_activity_date = self._get_users_first_activity_date(self.authors_ids[i])
+    #         data = metrics.calculate(self.authors_ids[i], first_activity_date)
+    #         if predict:
+    #             self.predict(data, i)
+    #         data_modified = modify_data(data, data_condition_function) \
+    #             if calculate_histogram or save_to_file or save_to_database else []
+    #         if calculate_histogram:
+    #             self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
+    #         self._save_data_to_file(file_writer, i, data_modified)
+    #         if save_to_database:
+    #             self._save_to_database(self.mode.short() + "_" + metrics.get_name(), self.authors_ids[i], data_modified)
+    #     self._save_histograms_to_file(str(self.mode.value))
+    #     bar.finish()
 
     def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
                             x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
@@ -165,12 +187,12 @@ class Manager:
             DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
         """
         self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
-        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors_ids))
-        for i in range(len(self.authors_ids)):  # For each author (node)
+        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors.keys()))
+        for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
             bar.next()
-            data = self._databaseEngine.get_array_value_column_for_user(metrics.get_name(), self.authors_ids[i], None)
+            data = self._databaseEngine.get_array_value_column_for_user(metrics.get_name(), user_id, None)
             if predict:
-                self.predict(data, i)
+                self.predict(data, user_id)
             data_modified = modify_data(data, data_condition_function) if calculate_histogram else []
             if calculate_histogram:
                 self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
@@ -181,7 +203,6 @@ class Manager:
     def k_means(self, n_clusters, parameters):
         """
         Performs k-means clustering and displays results.
-        :param save:
         :param n_clusters: int
             Number of clusters.
         :param parameters: array (string)
@@ -193,13 +214,13 @@ class Manager:
         k_means.fit(data)
         self._save_clusters([p[0] for p in parameters], k_means.predict(data), k_means.cluster_centers_, _data)
 
-    def predict(self, data, author_i):
+    def predict(self, data, author_id):
         """
         Predict time series.
         :param data: array
             DataProcessing used in prediction
-        :param author_i: int
-            Index of author
+        :param author_id: int
+            Author id
         """
         plot_data = []
         title_data = []
@@ -208,7 +229,7 @@ class Manager:
         parameters_versions = [i for i in range(3)]
         data = make_data_positive(diff(data))
         # print("Predict")
-        prediction = Prediction(data, self.authors_names[author_i])
+        prediction = Prediction(data, self.authors[author_id])
         for parameters_version in parameters_versions:
             result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
                                         Prediction.MAPE_error, parameters_version)
@@ -217,8 +238,8 @@ class Manager:
                 title_data.append("Original")
             plot_data.append(result[1])
             title_data.append(result[0] + str(parameters_version))
-        if self.authors_ids[author_i] in interesting_ids:
-            Prediction.plot("Prediction for " + self.authors_names[author_i], plot_data, title_data)
+        if self.authors[author_id] in interesting_ids:
+            Prediction.plot("Prediction for " + self.authors[author_id], plot_data, title_data)
 
     def _get_dates_range(self):
         """
@@ -226,10 +247,9 @@ class Manager:
         :return: tuple
             Contains first and last date occurring in database
         """
-        date = "date"
         r = []
         for column in ["comments", "posts"]:
-            r.append(self._databaseEngine.execute("SELECT min(" + date + "), max(" + date + ") FROM " + column).pop())
+            r.append(self._databaseEngine.get_dates_range(column))
         dates_range = (min(r[0][0], r[1][0]), max(r[0][1], r[1][1]))
         return dates_range
 
@@ -241,14 +261,7 @@ class Manager:
         :param include_responses_from_author: bool
             True - reactions from author should be included
         """
-        c = self._databaseEngine.execute("""SELECT c.author_id, p.author_id 
-                                            FROM comments c
-                                            INNER JOIN posts p 
-                                            ON c.post_id = p.id 
-                                            WHERE c.date BETWEEN """
-                                         + "'" + str(day_start) + "' and '" + str(day_end) + "'"
-                                         + ("" if include_responses_from_author
-                                            else "AND c.author_id!=p.author_id"))
+        c = self._databaseEngine.get_responses_to_posts(day_start, day_end, include_responses_from_author)
         return numpy.array(c)
 
     def _select_responses_to_comments(self, day_start, day_end, include_responses_from_author):
@@ -259,15 +272,7 @@ class Manager:
         :param include_responses_from_author: bool
             True - reactions from author should be included
         """
-        c = self._databaseEngine.execute("""SELECT c.author_id, p.author_id
-                                            FROM comments c
-                                            INNER JOIN comments p 
-                                            ON c.parentcomment_id = p.id
-                                            WHERE c.parentcomment_id IS NOT NULL
-                                            AND c.date BETWEEN """
-                                         + "'" + str(day_start) + "' and '" + str(day_end) + "'"
-                                         + ("" if include_responses_from_author
-                                            else "AND c.author_id!=p.author_id"))
+        c = self._databaseEngine.get_responses_to_comments(day_start, day_end, include_responses_from_author)
         return numpy.array(c)
 
     def _select_comments(self, day_start, day_end):
@@ -392,7 +397,7 @@ class Manager:
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
         else:
             self._read_salon24_comments_data_by_day()
-            self._add_data_to_graphs("sd", False)
+            self._add_data_to_graphs("sd")
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
             self._save_graphs_to_file(graphs_file_name)
 
@@ -444,24 +449,20 @@ class Manager:
         file_writer = FileWriter()
         file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
 
-        interesting_users = self._databaseEngine.execute("""SELECT id 
-                                                            FROM authors 
-                                                            ORDER BY po_in_neighbors_count_static DESC
-                                                            LIMIT 50""")
+        interesting_users = self._databaseEngine.get_interesting_users()
 
         for cluster in range(len(centers)):
             indexes = numpy.where(classes == cluster)
-            names = numpy.array(self.authors_names)[indexes]
-            users_ids = numpy.array(self.authors_ids)[indexes]
+            users_ids = numpy.array(sorted(self.authors.keys()))[indexes]
 
             print('Cluster: %s' % cluster)
-            print('\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(names)))
+            print('\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
             print('Parameters:')
             save['stats'].extend(['min', 'max', 'mean', 'stdev'])
             empty_stats = ['' for _ in range(3)]
             save['cluster'].append(cluster)
             save['cluster'].extend(empty_stats)
-            save['size'].append(len(names))
+            save['size'].append(len(users_ids))
             save['size'].extend(empty_stats)
 
             for i, parameter_name in enumerate(parameters_names):
@@ -476,13 +477,13 @@ class Manager:
             print("Sample users:")
             s = []
 
-            for i in range(len(names)):
-                if users_ids[i] in interesting_users:
-                    s.append(names[i])
+            for i in users_ids:
+                if users_ids in interesting_users:
+                    s.append(self.authors[i])
                     parameters = [
-                        self._databaseEngine.get_array_value_column_for_user(parameter_name, users_ids[i], mean)
+                        self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
                         for parameter_name in parameters_names]
-                    print("\t %s: %s" % (names[i], [round(p, 3) for p in parameters]))
+                    print("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
             print()
             save['sample'].extend([s, *empty_stats])
         file_writer.write_split_row_to_file(['cluster', save['cluster']])
@@ -492,18 +493,18 @@ class Manager:
             file_writer.write_split_row_to_file([parameter_name, save[parameter_name]])
         file_writer.write_split_row_to_file(['sample', save['sample']])
 
-    def _save_data_to_file(self, file_writer, author_index, data):
+    def _save_data_to_file(self, file_writer, author_id, data):
         """
         Saves data to file.
         :param file_writer: FileWriter
             FileWriter used to save data
-        :param author_index: int
-            Index of the author in names and ids arrays
+        :param author_id: int
+            Author id
         :param data: array (float)
             Author's data
         """
         if file_writer is not None:
-            file_writer.write_row_to_file([self.authors_ids[author_index], self.authors_names[author_index], *data])
+            file_writer.write_row_to_file([author_id, self.authors[author_id], *data])
 
     def _add_data_to_histograms(self, size, data):
         """
@@ -534,6 +535,7 @@ class Manager:
         """
         self.histogram_managers = []
         if calculate_histogram:
+            # TODO fix
             self._calculate_and_get_authors_static_neighborhood_size()
             for data_function in data_functions:
                 self.histogram_managers.append(self.HistogramManager(data_function, value, x_scale, size_scale))
@@ -555,7 +557,7 @@ class Manager:
             return file_writer
         return None
 
-    def _get_authors(self, parameter):
+    def _get_authors_parameter(self, parameter):
         """
         Created array of authors parameters ordered by id.
         :param parameter: str
@@ -563,7 +565,7 @@ class Manager:
         :return: array
             Array with authors parameters ordered by id
         """
-        return [x[0] for x in self._databaseEngine.execute("SELECT " + parameter + " FROM authors ORDER BY id")]
+        return self._databaseEngine.get_authors_parameter(parameter)
 
     def _get_graphs_labels(self, empty_count=0):
         """
@@ -579,34 +581,39 @@ class Manager:
             row_captions.insert(0, ",")
         return row_captions
 
-    def _get_first_activity_date(self, author_id):
+    def _get_first_activity_dates(self):
         """
-        Checks author's first activity date and returns it.
-        :param author_id:
-            Id of author
-        :return: datetime.datetime
-            First activity date
+        Gets first_activity_date column.
+        :return: dict
         """
-        try:
-            return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
-                                                % ("first_activity_date", author_id))[0][0]
-        except IndexError:
-            return None
+        return dict(self._databaseEngine.get_first_activity_date())
 
-    def _calculate_and_get_authors_static_neighborhood_size(self):
-        """
-        Calculates static neighborhood size and returns it.
-        :return: array (int)
-            Neighborhoods sizes
-        """
-        if self.static_neighborhood_size is None:
-            calculated_value = Metrics(Metrics.DEGREE_CENTRALITY, GraphConnectionType.IN,
-                                       GraphIterator(GraphIterator.GraphMode.STATIC))
-            self.static_neighborhood_size = \
-                {i: calculated_value.calculate(self.authors_ids[i],
-                                               self._get_first_activity_date(self.authors_ids[i]))[0]
-                 for i in range(len(self.authors_ids))}
-        return self.static_neighborhood_size
+    # def _get_users_first_activity_date(self, author_id):
+    #     """
+    #     Checks author's first activity date and returns it.
+    #     :param author_id:
+    #         Id of author
+    #     :return: datetime.datetime
+    #         First activity date
+    #     """
+    #     try:
+    #         return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
+    #                                             % ("first_activity_date", author_id))[0][0]
+    #     except IndexError:
+    #         return None
+
+    # def _calculate_and_get_authors_static_neighborhood_size(self):
+    #     """
+    #     Calculates static neighborhood size and returns it.
+    #     :return: array (int)
+    #         Neighborhoods sizes
+    #     """
+    #     if self.static_neighborhood_size is None:
+    #         calculated_value = Metrics(Metrics.DEGREE_CENTRALITY, GraphConnectionType.IN,
+    #                                    GraphIterator(GraphIterator.GraphMode.STATIC))
+    #         self.static_neighborhood_size = {i: calculated_value.calculate(i, self._get_users_first_activity_date(i))[0]
+    #                                          for i in self.authors.keys()}
+    #     return self.static_neighborhood_size
 
     def _save_to_database(self, column_name, author_id, data):
         """

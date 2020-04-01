@@ -37,6 +37,9 @@ class PostgresDatabaseEngine(DatabaseEngine):
                 data = self.cur.fetchmany(1000)
                 self.db.commit()
 
+    def get_first_activity_date(self):
+        return dict(self.execute("SELECT id, first_activity_date FROM authors"))
+
     @staticmethod
     def lst2pgarr(alist):
         return '{' + ','.join([str(x) for x in alist]) + '}'
@@ -90,6 +93,39 @@ class PostgresDatabaseEngine(DatabaseEngine):
                                      AND column_name = '%s'"""
                              % (table, column))
             return self.cur.fetchone()[0] is not 0
+
+    def get_dates_range(self, column):
+        return self.execute("SELECT min(date), max(date) FROM " + column).pop()
+
+    def get_responses_to_posts(self, day_start, day_end, include_responses_from_author):
+        return self.execute("""SELECT c.author_id, p.author_id 
+                                FROM comments c
+                                INNER JOIN posts p 
+                                ON c.post_id = p.id 
+                                WHERE c.date BETWEEN """
+                            + "'" + str(day_start) + "' and '" + str(day_end) + "'"
+                            + ("" if include_responses_from_author
+                               else "AND c.author_id!=p.author_id"))
+
+    def get_responses_to_comments(self, day_start, day_end, include_responses_from_author):
+        return self.execute("""SELECT c.author_id, p.author_id
+                                FROM comments c
+                                INNER JOIN comments p 
+                                ON c.parentcomment_id = p.id
+                                WHERE c.parentcomment_id IS NOT NULL
+                                AND c.date BETWEEN """
+                            + "'" + str(day_start) + "' and '" + str(day_end) + "'"
+                            + ("" if include_responses_from_author
+                               else "AND c.author_id!=p.author_id"))
+
+    def get_interesting_users(self):
+        return self.execute("""SELECT id 
+                                FROM authors 
+                                ORDER BY po_in_neighbors_count_static DESC
+                                LIMIT 50""")
+
+    def get_authors_parameter(self, parameter):
+        return dict(self.execute("SELECT id, " + parameter + " FROM authors"))
 
     def execute(self, query, parameters=None):
         if self.cur is not None:

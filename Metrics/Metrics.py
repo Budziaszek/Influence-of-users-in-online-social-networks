@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy
 
 
@@ -6,9 +8,16 @@ class Metrics:
     complex_description = None
     is_complex = False
 
-    # Centrality
-    DEGREE_CENTRALITY = "degree_centrality"  # Number of edges attached (number of neighbors)
-    WEIGHTED_DEGREE_CENTRALITY = "weighted_degree_centrality"  # Sum of the weights of edges attached
+    # CENTRALITY
+    DEGREE = "degree"  # Number of edges attached (number of neighbors
+    WEIGHTED_DEGREE = "weighted_degree"  # Sum of the weights of edges attached
+    DEGREE_CENTRALITY = "degree_centrality"  # Degree normalized by dividing by maximum possible degree
+    EIGENVECTOR_CENTRALITY = "eigenvector_centrality"
+    WEIGHTED_EIGENVECTOR_CENTRALITY = "weighted_eigenvector_centrality"
+    # TODO Remember -> unable to calculate katz centrality for full graph!!!
+    KATZ_CENTRALITY = "katz_centrality"
+    WEIGHTED_KATZ_CENTRALITY = "weighted_katz_centrality"
+    # CLOSENESS_CENTRALITY = "closeness_centrality"
 
     DENSITY = "density"
     RECIPROCITY = "reciprocity"
@@ -18,11 +27,11 @@ class Metrics:
     COMPOSITION_NEIGHBORS_PERCENTS = "composition_neighbors_percents"
     NEIGHBORS_COUNT_DIFFERENCE = "neighbors_count_difference"
     NEW_NEIGHBORS = "new_neighbors"
-    # TODO eigenvector centrality (centralność wektora własnego)
-    # TODO Katz centrality
+
     # TODO PageRank
     # TODO betweeness centrality (pośrednictwo)
     # TODO closeness centrality (bliskość)
+    # TODO incremental closeness centrality (?)
     # TODO local centrality measure
     # TODO neighborhood centrality
     # TODO NL centrality
@@ -43,6 +52,36 @@ class Metrics:
         if not isinstance(connection_type, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
             self.connection_type = [connection_type, connection_type]
 
+    def new_calculate(self, users_ids, first_activity_dates):
+        data = defaultdict(list)
+        self.graph_iterator.reset()
+        while not self.graph_iterator.stop:
+            graph = self.graph_iterator.next()
+            graph_data = self._call_metric_function(self.connection_type, graph)
+            end = graph[1].end_day if isinstance(graph, list) else graph.end_day
+            for key in users_ids:
+                if first_activity_dates[key] is None or first_activity_dates[key] <= end:
+                    data[key].append(graph_data[key] if key in graph_data else 0)
+                else:
+                    data[key].append(None)
+        return data
+
+    def _call_metric_function(self, connection_type, graph):
+        if self.value is self.DEGREE:
+            return connection_type.degree(graph)
+        if self.value is self.WEIGHTED_DEGREE:
+            return connection_type.weighted_degree(graph)
+        if self.value is self.DEGREE_CENTRALITY:
+            return connection_type.degree_centrality(graph)
+        if self.value is self.EIGENVECTOR_CENTRALITY:
+            return graph.eigenvector_centrality()
+        if self.value is self.WEIGHTED_EIGENVECTOR_CENTRALITY:
+            return graph.eigenvector_centrality(True)
+        if self.value is self.KATZ_CENTRALITY:
+            return graph.katz_centrality()
+        if self.value is self.WEIGHTED_KATZ_CENTRALITY:
+            return graph.katz_centrality(True)
+
     def calculate(self, user_id, first_activity_date=None):
         data = []
         self.graph_iterator.reset()
@@ -59,9 +98,7 @@ class Metrics:
 
     def _calculate_for_user(self, connection_type, graph, user_id):
         if self.value is self.DEGREE_CENTRALITY:
-            return connection_type.degree_centrality(graph, user_id)
-        if self.value is self.WEIGHTED_DEGREE_CENTRALITY:
-            return connection_type.connections_count(graph, user_id)
+            return connection_type.old_degree_centrality(graph, user_id)
         if self.value is self.DENSITY:
             return connection_type.density(graph, user_id)
         if self.value is self.RECIPROCITY:

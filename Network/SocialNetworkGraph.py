@@ -1,5 +1,6 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+from networkx import DiGraph
 
 
 class SocialNetworkGraph:
@@ -46,3 +47,37 @@ class SocialNetworkGraph:
     def reciprocity(self, nodes, neighborhood_limit=None):
         if neighborhood_limit is None:
             return nx.algorithms.reciprocity(self._G, nodes)
+
+    def degree(self, weight=False):
+        if weight:
+            return {node: sum([self._G[u][v]['weight'] for u, v in self._G.edges(node)]) for node in self.nodes}
+        return {n: d for n, d in list(self._G.degree(self._G.nodes))}
+
+    def in_degree(self, weight=False):
+        if weight:
+            return {node: sum([self._G[u][v]['weight'] for u, v in self._G.in_edges(node)]) for node in self.nodes}
+        return {n: d for n, d in list(self._G.in_degree(self._G.nodes))}
+
+    def out_degree(self, weight=False):
+        if weight:
+            return {node: sum([self._G[u][v]['weight'] for u, v in self._G.out_edges(node)]) for node in self.nodes}
+        return {n: d for n, d in list(self._G.out_degree(self._G.nodes))}
+
+    def in_degree_centrality(self):
+        return nx.in_degree_centrality(self._G)
+
+    def out_degree_centrality(self):
+        return nx.out_degree_centrality(self._G)
+
+    def degree_centrality(self):
+        return nx.degree_centrality(self._G)
+
+    def eigenvector_centrality(self, weighted=False):
+        if weighted:
+            return nx.eigenvector_centrality(self._G, weight='weight', max_iter=1000)
+        return nx.eigenvector_centrality(self._G, max_iter=1000)
+
+    def katz_centrality(self, weighted=False):
+        if weighted:
+            return nx.katz_centrality(self._G, weight='weight', max_iter=5000)
+        return nx.katz_centrality(self._G, max_iter=5000)

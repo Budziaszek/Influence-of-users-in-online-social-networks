@@ -6,8 +6,32 @@ class GraphConnectionType(Enum):
     OUT = "out"
     IN_OUT = "in+out"
 
-    def degree_centrality(self, graph, node):
+    def old_degree_centrality(self, graph, node):
         return len(self.neighbors(graph, node))
+
+    def degree(self, graph):
+        if self.value == self.IN.value:
+            return graph.in_degree()
+        elif self.value == self.OUT.value:
+            return graph.out_degree()
+        else:
+            return graph.degree()
+
+    def degree_centrality(self, graph):
+        if self.value == self.IN.value:
+            return graph.in_degree_centrality()
+        elif self.value == self.OUT.value:
+            return graph.out_degree_centrality()
+        else:
+            return graph.degree_centrality()
+
+    def weighted_degree(self, graph):
+        if self.value == self.IN.value:
+            return graph.in_degree(True)
+        elif self.value == self.OUT.value:
+            return graph.out_degree(True)
+        else:
+            return graph.degree(True)
 
     def neighbors(self, graph, node, value=None):
         if value is None:
@@ -26,14 +50,11 @@ class GraphConnectionType(Enum):
         if not graph.has_node(node):
             return []
         if self.value == self.OUT.value:
-            return [graph[u][v]['weight'] for u, v in graph.out_edges(node)]
+            return [graph[u][v][self._G.nodes] for u, v in graph.out_edges(node)]
         elif self.value == self.IN.value:
             return [graph[u][v]['weight'] for u, v in graph.in_edges(node)]
         else:
             return []
-
-    def connections_count(self, graph, node):
-        return sum(self.connections(graph, node))
 
     def density(self, graph, node):
         neighbors = self.neighbors(graph, node)
