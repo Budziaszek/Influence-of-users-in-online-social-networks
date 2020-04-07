@@ -1,3 +1,4 @@
+import logging
 import sys
 import time
 from math import ceil
@@ -22,12 +23,13 @@ class ProgressBar:
 
     def next(self, i=1):
         if self.current == 0:
-            print(self.start_communicate)
+            logging.info(self.start_communicate)
+        time.sleep(100)
         incre = int(ceil((100.0 / self.count * self.current)))
         end = time.time()
         hours, rem = divmod(end - self.start, 3600)
         minutes, seconds = divmod(rem, 60)
-        if self.current != self.count - 1:
+        if self.current != self.count - 1 and logging.root.level <= logging.INFO:
             sys.stdout.write('\r|%s%s%s%s| %d%%' %
                              (self.unitColor, '\033[7m' + ' ' * incre + ' \033[27m',
                               self.endColor, ' ' * (100 - incre), incre))
@@ -37,4 +39,5 @@ class ProgressBar:
 
     def finish(self):
         sys.stdout.write('\n')
-        print(self.finish_communicate)
+        if logging.root.level <= logging.INFO:
+            print(self.finish_communicate)

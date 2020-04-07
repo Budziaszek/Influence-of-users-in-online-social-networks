@@ -58,10 +58,10 @@ class GraphConnectionType(Enum):
 
     def density(self, graph, node):
         neighbors = self.neighbors(graph, node)
-        # Remove considered node
+        #  Remove considered node
         if node in neighbors:
             neighbors.remove(node)
-        # Ignore neighborhood if user have no neighbors or neighborhood to small
+        #  Ignore neighborhood if user have no neighbors or neighborhood to small
         if len(neighbors) == 0 or len(neighbors) == 1:
             return 0
         #  Initialize values - numbers of users in neighborhood connected to user (does NOT include user itself)
@@ -70,8 +70,8 @@ class GraphConnectionType(Enum):
             n_neighbors = self.neighbors(graph, n)
             values.append(len(list(set(n_neighbors).intersection(neighbors))))
 
-        size = (len(neighbors) - 1)*len(neighbors)
-        value = sum(values)/size
+        size = (len(neighbors) - 1) * len(neighbors)
+        value = sum(values) / size
         return value
 
     def intersection(self, graph_1, graph_2, node):
@@ -95,9 +95,33 @@ class GraphConnectionType(Enum):
         if len(union) == 0:
             return 0
         elif self.value == self.IN.value:
-            return len(neighbors_in)/len(union)
+            return len(neighbors_in) / len(union)
         elif self.value == self.OUT.value:
-            return len(neighbors_out)/len(union)
+            return len(neighbors_out) / len(union)
+
+    def eigenvector_centrality(self, graph, weight=False):
+        if self.value == self.IN.value:
+            return graph.eigenvector_centrality(weight=weight)
+        elif self.value == self.OUT.value:
+            return graph.eigenvector_centrality(weight=weight, reverse=True)
+
+    def katz_centrality(self, graph, weight=False):
+        if self.value == self.IN.value:
+            return graph.katz_centrality(weight=weight)
+        elif self.value == self.OUT.value:
+            return graph.katz_centrality(weight=weight, reverse=True)
+
+    def closeness_centrality(self, graph):
+        if self.value == self.IN.value:
+            return graph.closeness_centrality()
+        elif self.value == self.OUT.value:
+            return graph.closeness_centrality(reverse=True)
+
+    def betweenness_centrality(self, graph):
+        if self.value == self.IN.value:
+            return graph.betweenness_centrality()
+        elif self.value == self.OUT.value:
+            return graph.betweenness_centrality(reverse=True)
 
 
 

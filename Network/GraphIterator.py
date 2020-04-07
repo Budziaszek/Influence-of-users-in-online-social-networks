@@ -46,33 +46,9 @@ class GraphIterator:
                 self.stop = True
         return graphs if len(graphs) > 1 else graphs[0]
 
-        # if self.graph_mode is self.GraphMode.DYNAMIC or self.GraphMode is self.GraphMode.STATIC_DYNAMIC:
-        #     graph = GraphIterator.dynamic_graphs[self.current_id]
-        #     if self.current_id + 1 >= len(GraphIterator.dynamic_graphs):
-        #         self.stop = True
-        #     else:
-        #         self.current_id += 1
-        #     if self.GraphMode is self.GraphMode.STATIC_DYNAMIC:
-        #         return graph, GraphIterator.static_graph
-        #     return graph
-        # if self.graph_mode is self.GraphMode.STATIC:
-        #     self.stop = True
-        #     return GraphIterator.static_graph
-        # if self.graph_mode is self.GraphMode.ALL:
-        #     self.graph_mode = self.GraphMode.DYNAMIC
-        #     return GraphIterator.static_graph
-        # if self.graph_mode is self.GraphMode.DYNAMIC_CURR_NEXT \
-        #         or self.graph_mode is self.GraphMode.DYNAMIC_CURR_NEXT_AND_STATIC:
-        #     graph = [GraphIterator.dynamic_graphs[self.current_id], GraphIterator.dynamic_graphs[self.current_id + 1]]
-        #     if self.current_id + 2 >= len(GraphIterator.dynamic_graphs):
-        #         self.stop = True
-        #     else:
-        #         self.current_id += 1
-        #     if self.graph_mode is self.GraphMode.DYNAMIC_CURR_NEXT_AND_STATIC:
-        #         graph.append(GraphIterator.static_graph)
-        #     return graph
-
     def reset(self):
         self.stop = False
         self.current_id = 0
         self.graph_mode = self._graph_mode
+
+

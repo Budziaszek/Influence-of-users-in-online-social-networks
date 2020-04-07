@@ -19,7 +19,6 @@ class SocialNetworkGraph:
 
     def add_edges(self, edges):
         for edge in edges:
-            # print(edge)
             data = self._G.get_edge_data(*edge)
             self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
 
@@ -72,12 +71,20 @@ class SocialNetworkGraph:
     def degree_centrality(self):
         return nx.degree_centrality(self._G)
 
-    def eigenvector_centrality(self, weighted=False):
-        if weighted:
-            return nx.eigenvector_centrality(self._G, weight='weight', max_iter=1000)
-        return nx.eigenvector_centrality(self._G, max_iter=1000)
+    def eigenvector_centrality(self, weight=False, reverse=False):
+        if not weight:
+            return nx.eigenvector_centrality(self._G if not reverse else self._G.reverse(), max_iter=1000)
+        return nx.eigenvector_centrality(self._G if not reverse else self._G.reverse(), weight='weight', max_iter=1000)
 
-    def katz_centrality(self, weighted=False):
-        if weighted:
-            return nx.katz_centrality(self._G, weight='weight', max_iter=5000)
-        return nx.katz_centrality(self._G, max_iter=5000)
+    def katz_centrality(self, weight=False, reverse=False):
+        if not weight:
+            return nx.katz_centrality(self._G if not reverse else self._G.reverse(), max_iter=5000)
+        return nx.katz_centrality(self._G if not reverse else self._G.reverse(), weight='weight', max_iter=5000)
+
+    def closeness_centrality(self, reverse=False):
+        return nx.closeness_centrality(self._G if not reverse else self._G.reverse())
+
+    def betweenness_centrality(self, reverse=False):
+        # TODO check if there is a difference
+        return nx.betweenness_centrality(self._G if not reverse else self._G.reverse())
+

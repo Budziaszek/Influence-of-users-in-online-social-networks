@@ -1,3 +1,5 @@
+import logging
+
 import psycopg2
 from DataProcessing.DatabaseEngine import DatabaseEngine
 
@@ -8,9 +10,9 @@ class PostgresDatabaseEngine(DatabaseEngine):
     def connect(self, connection_parameters):
         try:
             self.db = psycopg2.connect(str(connection_parameters))
-            print("Connected to database")
+            logging.info("Connected to database")
         except psycopg2.OperationalError:
-            print("Unable to connect to the database")
+            logging.error("Unable to connect to the database")
             return
         self.cur = self.db.cursor()
 
@@ -37,6 +39,11 @@ class PostgresDatabaseEngine(DatabaseEngine):
                 data = self.cur.fetchmany(1000)
                 self.db.commit()
 
+    def drop_column(self, column_name, table="authors"):
+        if self.cur is not None:
+            self.cur.execute("""ALTER TABLE" %s DROP %s""" % (table, column_name))
+            self.db.commit()
+
     def get_first_activity_date(self):
         return dict(self.execute("SELECT id, first_activity_date FROM authors"))
 
@@ -60,19 +67,21 @@ class PostgresDatabaseEngine(DatabaseEngine):
         if self.cur is not None:
             self.cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
             self.db.commit()
+            if fun == "all":
+                return self.cur.fetchall()[0]
             if fun is not None:
                 return fun(self.cur.fetchall()[0][0])
-            else:
-                return self.cur.fetchall()[0][0]
+            return self.cur.fetchall()[0][0]
 
     def get_array_value_column(self, column_name, fun=None):
         if self.cur is not None:
-            self.cur.execute("""SELECT %s FROM authors ORDER BY id""" % column_name)
+            self.cur.execute("""SELECT id, %s FROM authors ORDER BY id""" % column_name)
             self.db.commit()
+            if fun == "all":
+                return dict(self.cur.fetchall())
             if fun is not None:
-                return [fun(x[0]) for x in self.cur.fetchall()]
-            else:
-                return [x[0] for x in self.cur.fetchall()]
+                return {x[0]: fun(x[1]) for x in self.cur.fetchall()}
+            return {x[0]: x[1][0] for x in self.cur.fetchall()}
 
     def get_min_max_array_value_column(self, column_name, fun=None):
         if self.cur is not None:

@@ -1,14 +1,20 @@
+import collections
 import datetime as dt
+import logging
+import math
 import os
 import pickle
 import warnings
-from collections import defaultdict
+from collections import defaultdict, Counter
+from itertools import chain
 from pathlib import Path
-import numpy
+import numpy as np
 from statsmodels.tsa.statespace.tools import diff
 from sklearn.cluster import KMeans
 from statistics import mean, stdev
+import matplotlib.pyplot as plt
 
+from Metrics.MetricsProcessing.Statistics import Statistics
 from Metrics.MetricsProcessing.Histogram import Histogram
 from Metrics.MetricsProcessing.Prediction import Prediction
 from Network.GraphIterator import GraphIterator
@@ -57,7 +63,6 @@ class Manager:
                 fun_name = "all"
             else:
                 fun_name = str(data_function.__name__)
-            # print("Creating histogram for ", fun_name)
             self.file_name = fun_name + "_" + "hist_" + calculated_value.get_name() + ".txt"
             self._histogram = Histogram(x_scale, size_scale)
 
@@ -93,30 +98,155 @@ class Manager:
         self.authors = self._get_authors_parameter("name")
         self.static_neighborhood_size = None
 
-    def new_calculate(self, mode, metrics,
-                      save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
-                      x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+    def calculate(self, mode, metrics, save_to_file=True, save_to_database=True, data_condition_function=None):
         if mode != self.mode:
             self._create_graphs(mode)
         file_writer = self._initialize_file_writer(save_to_file, metrics)
-        self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
 
-        print("Calculating %s (%s)" % (metrics.get_name(), self.mode))
+        logging.info("Calculating %s (%s)" % (metrics.get_name(), self.mode))
         first_activity_dates = self._get_first_activity_dates()
-        data = metrics.new_calculate(self.authors.keys(), first_activity_dates)
-        print("Calculated")
-        bar = ProgressBar("Processing %s (%s)" % (metrics.get_name(), self.mode), "Processed", len(self.authors.keys()))
+        data = metrics.calculate(self.authors.keys(), first_activity_dates)
+        logging.debug("Calculated")
+        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.mode), "Processed", len(self.authors.keys()))
         for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
             bar.next()
             d = data[user_id]
-            if predict:
-                self.predict(d, i)
-            m = modify_data(d, data_condition_function) if calculate_histogram or save_to_file or save_to_database else []
+            m = modify_data(d, data_condition_function) if save_to_file or save_to_database else []
             self._save_data_to_file(file_writer, i, m)
             if save_to_database:
                 self._save_to_database(self.mode.short() + "_" + metrics.get_name(), user_id, m)
         self._save_histograms_to_file(str(self.mode.value))
         bar.finish()
+
+    def clean(self, mode, metrics):
+        self._databaseEngine.drop_column(mode.short() + "_" + metrics.get_name())
+
+    def statistics(self, mode, metrics, statistics=None):
+        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name(), "all")
+
+        if isinstance(data[list(data.keys())[-1]], list):
+            data = list(chain(*data.values()))
+
+        Statistics.save('statistics/', mode.short() + "_" + metrics.get_name() + ".txt",
+                        Statistics.calculate(list(data), statistics))
+
+    def points_2d(self, mode, metrics):
+        data_x = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics[0].get_name())
+        data_y = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics[1].get_name())
+
+        d = dict([(k, [data_x[k], data_y[k]]) for k in data_x])
+
+        plt.figure()
+        plt.plot([d[k][0] for k in d.keys()], [d[k][1] for k in d.keys()], '.')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.xlabel(mode.short() + "_" + metrics[0].get_name())
+        plt.ylabel(mode.short() + "_" + metrics[0].get_name())
+        plt.show()
+
+    def distribution_linear(self, mode, metrics, cut=(-1, -1), n_bins=-1):
+        plt.rc('font', size=10)
+        plt.ylabel('Frequency')
+        plt.xlabel("Metrics value")
+        for m in metrics:
+            data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name())
+
+            r_1 = min(data.values())
+            r_2 = max(data.values())
+            r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
+            r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
+
+            step = (r_2 - r_1) / n_bins if n_bins != -1 else 1
+            bins = np.arange(start=r_1, stop=r_2 + 2 * step, step=step)
+
+            cnt, bins = np.histogram(list(data.values()), bins)
+
+            # print(r_1, r_2, step)
+            # x = np.arange(r_1, r_2, step)
+            # print(x)
+            print(bins)
+
+            # plt.title(mode.short() + "_" + m.get_name())
+            plt.plot(bins[:-1], cnt, label=mode.short() + "_" + m.get_name())
+
+        plt.legend()
+        plt.show()
+
+    # def histogram_multiple(self, mode, metrics, n_bins):
+    #     x_multi = [np.random.randn(n) for n in [10000, 5000, 2000]]
+    #     fig, ax = plt.subplots()
+    #     ax.hist(x_multi, n_bins, histtype='bar')
+    #     ax.set_title('different sample sizes')
+    #
+    #     plt.show()
+
+    # TODO multiple bars
+    def histogram(self, mode, metrics, n_bins, cut=(-1, -1), half_open=False, integers=True, step=-1):
+        plt.rc('font', size=8)
+        fig, ax = plt.subplots()
+
+        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
+
+        r_1 = min(data.values())
+        r_2 = max(data.values())
+        r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
+        r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
+
+        step = (r_2 - r_1) / n_bins if step is -1 else step
+        if integers:
+            step = math.ceil(step)
+        bins = np.arange(start=r_1, stop=r_2 + step, step=step)
+        if half_open:
+            bins = np.append(bins[:-1], [r_2])
+
+        cnt, bins = np.histogram(list(data.values()), bins)
+        print(sum(cnt))
+        if integers:
+            if len(bins) > 1:
+                labels = ["[" + str(int(bins[i])) + ", " + str(int(bins[i + 1])) + ")" for i in range(len(bins) - 2)]
+                if half_open:
+                    labels.append("[" + str(int(bins[-2])) + ", " + str(int(bins[-1])) + ")")
+                else:
+                    labels.append("[" + str(int(bins[-2])) + ", " + str(int(bins[-1])) + "]")
+            else:
+                labels = ["[" + str(bins[-2]) + ", " + str(bins[-1]) + "]"]
+        else:
+            if len(bins) > 1:
+                labels = ["[" + "{:.3f}".format(bins[i], 3) + ", " + "{:.3f}".format(bins[i + 1]) + ")"
+                          for i in range(len(bins) - 2)]
+                if half_open:
+                    labels.append("[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + ")")
+                else:
+                    labels.append("[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + "]")
+            else:
+                labels = ["[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + "]"]
+
+        x = np.arange(len(labels))  # the label locations
+        width = 0.9  # the width of the bars
+
+        rects1 = ax.bar(x, cnt, width)
+
+        def autolabel(rects):
+            """Attach a text label above each bar in *rects*, displaying its height."""
+            for rect in rects:
+                height = rect.get_height()
+                ax.annotate('{}'.format(height),
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom')
+
+        plt.ylabel('Frequency')
+        plt.xlabel("Metrics value")
+        ax.set_xticklabels(bins)
+        ax.set_xticklabels(labels)
+        # ax.set_title(mode.short() + "_" + metrics.get_name())
+        ax.set_xticks(x)
+        plt.xticks(rotation=90)
+        plt.ylim(0, max(cnt) * 1.1)
+        autolabel(rects1)
+        fig.tight_layout()
+        plt.show()
 
     # def calculate(self, mode, metrics,
     #               save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
@@ -208,11 +338,13 @@ class Manager:
         :param parameters: array (string)
             Parameters included in clustering.
         """
-        print(Manager.background + 'Clustering: k-means (n_clusters= %s)' % str(n_clusters) + '\n' + Manager.reset)
+        logging.info(Manager.background + 'Clustering: k-means (n_clusters= %s)'
+                     % str(n_clusters) + '\n' + Manager.reset)
         data, _data = self._prepare_clustering_data(parameters)
         k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
         k_means.fit(data)
         self._save_clusters([p[0] for p in parameters], k_means.predict(data), k_means.cluster_centers_, _data)
+        logging.info('Clustering finished. Result saved in output folder.')
 
     def predict(self, data, author_id):
         """
@@ -228,7 +360,7 @@ class Manager:
         # methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
         parameters_versions = [i for i in range(3)]
         data = make_data_positive(diff(data))
-        # print("Predict")
+        logging.info("Predict")
         prediction = Prediction(data, self.authors[author_id])
         for parameters_version in parameters_versions:
             result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
@@ -262,7 +394,7 @@ class Manager:
             True - reactions from author should be included
         """
         c = self._databaseEngine.get_responses_to_posts(day_start, day_end, include_responses_from_author)
-        return numpy.array(c)
+        return np.array(c)
 
     def _select_responses_to_comments(self, day_start, day_end, include_responses_from_author):
         """
@@ -273,7 +405,7 @@ class Manager:
             True - reactions from author should be included
         """
         c = self._databaseEngine.get_responses_to_comments(day_start, day_end, include_responses_from_author)
-        return numpy.array(c)
+        return np.array(c)
 
     def _select_comments(self, day_start, day_end):
         """
@@ -336,18 +468,18 @@ class Manager:
         self.dynamic_graphs = []
         self.static_graph = None
         if graph_type is "sd":
-            print("Creating static graph and dynamic graphs")
+            logging.info("Creating static graph and dynamic graphs")
             self._add_data_to_static_graph()
             self._add_data_to_dynamic_graphs()
         elif graph_type is "d":
-            print("Creating dynamic graphs")
+            logging.info("Creating dynamic graphs")
             self._add_data_to_dynamic_graphs()
         elif graph_type is "s":
-            print("Creating static graph")
+            logging.info("Creating static graph")
             self._add_data_to_static_graph()
         else:
-            raise Exception("ERROR - wrong graph value")
-        print("Graphs created")
+            raise Exception("EXCEPTION - wrong graph value")
+        logging.info("Graphs created")
 
     def _add_data_to_static_graph(self):
         """
@@ -355,7 +487,7 @@ class Manager:
         """
         graph = SocialNetworkGraph()
         for comments in self.comments_to_add:
-            edges = numpy.concatenate(comments, axis=0)
+            edges = np.concatenate(comments, axis=0)
             graph.add_edges(edges)
         graph.start_day, graph.end_day = self.days[0], self.days[-1]
         self.static_graph = graph
@@ -373,7 +505,7 @@ class Manager:
             if end >= self._days_count:
                 return
             for comments in self.comments_to_add:
-                edges = numpy.concatenate(comments[i:end + 1], axis=0)
+                edges = np.concatenate(comments[i:end + 1], axis=0)
                 graph.add_edges(edges)
             graph.start_day, graph.end_day = self.days[i], self.days[end]
             self.dynamic_graphs.append(graph)
@@ -407,7 +539,7 @@ class Manager:
         :param graphs_file_name:
             Filename from which graphs will be loaded
         """
-        print("Loading graphs from file")
+        logging.info("Loading graphs from file")
         with open(graphs_file_name, 'rb') as file:
             dictionary = pickle.load(file)
             self.static_graph = dictionary['static']
@@ -425,11 +557,11 @@ class Manager:
         _data = {}
         for parameter in parameters:
             name, weight = parameter
-            data[name] = numpy.array(self._databaseEngine.get_array_value_column(name, mean))
+            data[name] = np.array(self._databaseEngine.get_array_value_column(name, mean))
             minimum, maximum = min(data[name]), max(data[name])
             _data[name] = data[name].copy()
             data[name] = [(x - minimum) / (maximum - minimum) * weight for x in data[name]]
-        return numpy.column_stack(data[p[0]] for p in parameters), numpy.column_stack(_data[p[0]] for p in parameters)
+        return np.column_stack(data[p[0]] for p in parameters), np.column_stack(_data[p[0]] for p in parameters)
 
     class Cluster:
         def __init__(self):
@@ -452,12 +584,13 @@ class Manager:
         interesting_users = self._databaseEngine.get_interesting_users()
 
         for cluster in range(len(centers)):
-            indexes = numpy.where(classes == cluster)
-            users_ids = numpy.array(sorted(self.authors.keys()))[indexes]
+            indexes = np.where(classes == cluster)
+            users_ids = np.array(sorted(self.authors.keys()))[indexes]
 
-            print('Cluster: %s' % cluster)
-            print('\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
-            print('Parameters:')
+            logging.debug('Cluster: %s' % cluster)
+            logging.debug(
+                '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
+            logging.debug('Parameters:')
             save['stats'].extend(['min', 'max', 'mean', 'stdev'])
             empty_stats = ['' for _ in range(3)]
             save['cluster'].append(cluster)
@@ -470,11 +603,11 @@ class Manager:
                 std = stdev(values) if len(values) > 1 else 0
                 save[parameter_name].extend([round(min(values), 3), round(max(values), 3),
                                              round(mean(values), 3), round(std, 3)])
-                print("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
-                      (parameter_name, round(min(values), 3), round(max(values), 3),
-                       round(mean(values), 3), round(stdev(values), 3)))
+                logging.debug("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
+                              (parameter_name, round(min(values), 3), round(max(values), 3),
+                               round(mean(values), 3), round(stdev(values), 3)))
 
-            print("Sample users:")
+            logging.debug("Sample users:")
             s = []
 
             for i in users_ids:
@@ -483,8 +616,8 @@ class Manager:
                     parameters = [
                         self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
                         for parameter_name in parameters_names]
-                    print("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
-            print()
+                    logging.debug("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
+            logging.debug('\n')
             save['sample'].extend([s, *empty_stats])
         file_writer.write_split_row_to_file(['cluster', save['cluster']])
         file_writer.write_split_row_to_file(['size', save['size']])
