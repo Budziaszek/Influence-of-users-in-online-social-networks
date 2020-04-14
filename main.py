@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)
 
-calculate = True
+calculate = False
 display = True
 cluster = False
 
@@ -27,14 +27,18 @@ if calculate:
 if display:
     for value in values_to_calculate:
         pass
-        # manager.histogram(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-        #                   metrics=value,
-        #                   n_bins=30,
-        #                   cut=[-1, -1],
-        #                   half_open=False,
-        #                   integers=False,
-        #                   step=-1
-        #                   )
+        manager.histogram(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                          metrics=value,
+                          n_bins=30,
+                          cut=[0.0000000000000001, -1],
+                          half_open=False,
+                          integers=False,
+                          step=-1
+                          )
+        # manager.display(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+        #                 metrics=value,
+        #                 min=0,
+        #                 max=0.030)
         # manager.distribution_linear(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
         #                             metrics=[value],
         #                             cut=(1, 100),

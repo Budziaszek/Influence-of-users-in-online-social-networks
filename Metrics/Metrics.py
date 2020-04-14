@@ -17,7 +17,7 @@ class Metrics:
     KATZ_CENTRALITY = "katz_centrality"
     WEIGHTED_KATZ_CENTRALITY = "weighted_katz_centrality"
     CLOSENESS_CENTRALITY = "closeness_centrality"
-    BETWEENNESS_CENTRALITY = "betweeness_centrality"
+    BETWEENNESS_CENTRALITY = "betweenness_centrality"
 
     # TODO Improve metrics
     COMPOSITION_NEIGHBORS_COUNT = "composition_neighbors"

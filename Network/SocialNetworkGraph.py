@@ -78,8 +78,8 @@ class SocialNetworkGraph:
 
     def katz_centrality(self, weight=False, reverse=False):
         if not weight:
-            return nx.katz_centrality(self._G if not reverse else self._G.reverse(), max_iter=5000)
-        return nx.katz_centrality(self._G if not reverse else self._G.reverse(), weight='weight', max_iter=5000)
+            return nx.katz_centrality(self._G if not reverse else self._G.reverse(), max_iter=50000000)
+        return nx.katz_centrality(self._G if not reverse else self._G.reverse(), weight='weight', max_iter=50000000)
 
     def closeness_centrality(self, reverse=False):
         return nx.closeness_centrality(self._G if not reverse else self._G.reverse())

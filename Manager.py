@@ -107,8 +107,16 @@ class Manager:
         first_activity_dates = self._get_first_activity_dates()
         data = metrics.calculate(self.authors.keys(), first_activity_dates)
         logging.debug("Calculated")
-        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.mode), "Processed", len(self.authors.keys()))
+        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.mode), "Processed",
+                          len(self.authors.keys()))
+        try:
+            file = open(self.mode.short() + "_" + metrics.get_name(), 'wb')
+            pickle.dump(data_condition_function, file)
+            file.close()
+        except Exception:
+            pass
         for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
+            # print(user_id, data[user_id])
             bar.next()
             d = data[user_id]
             m = modify_data(d, data_condition_function) if save_to_file or save_to_database else []
@@ -179,6 +187,12 @@ class Manager:
     #     ax.set_title('different sample sizes')
     #
     #     plt.show()
+
+    def display(self, mode, metrics, min, max):
+        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
+        for d in data:
+            if min < data[d] < max:
+                print(d, data[d])
 
     # TODO multiple bars
     def histogram(self, mode, metrics, n_bins, cut=(-1, -1), half_open=False, integers=True, step=-1):

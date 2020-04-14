@@ -24,7 +24,7 @@ class ProgressBar:
     def next(self, i=1):
         if self.current == 0:
             logging.info(self.start_communicate)
-        time.sleep(100)
+            time.sleep(100)
         incre = int(ceil((100.0 / self.count * self.current)))
         end = time.time()
         hours, rem = divmod(end - self.start, 3600)

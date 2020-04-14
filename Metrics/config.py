@@ -25,6 +25,7 @@ weighted_eigenvector_centrality_in_static = \
 katz_centrality_in_static = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 weighted_katz_centrality_in_static = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 closeness_centrality_in_static = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
+betweenness_centrality_in_static = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 
 degree_in_dynamic = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
 weighted_degree_in_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
@@ -35,6 +36,7 @@ weighted_eigenvector_centrality_in_dynamic = \
 katz_centrality_in_dynamic = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 weighted_katz_centrality_in_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 closeness_centrality_in_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
+betweenness_centrality_in_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 
 degree_out_static = Metrics(Metrics.DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
 weighted_degree_out_static = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
@@ -45,6 +47,7 @@ weighted_eigenvector_centrality_out_static = \
 katz_centrality_out_static = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 weighted_katz_centrality_out_static = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 closeness_centrality_out_static = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
+betweenness_centrality_out_static = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 
 degree_out_dynamic = Metrics(Metrics.DEGREE, CONNECTION_OUT, ITERATOR_DYNAMIC)
 weighted_degree_out_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_OUT, ITERATOR_DYNAMIC)
@@ -56,6 +59,7 @@ katz_centrality_out_dynamic = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_OUT, I
 weighted_katz_centrality_out_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_OUT,
                                                ITERATOR_DYNAMIC)
 closeness_centrality_out_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
+betweenness_centrality_out_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
 
 # connections_in_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, c_in, dynamic)
 # neighbors_count_in_dynamic = Metrics(Metrics.DEGREE_CENTRALITY, c_in, dynamic)
@@ -98,8 +102,9 @@ values_to_calculate = [
     # weighted_eigenvector_centrality_in_static,
     # katz_centrality_in_static,
     # weighted_katz_centrality_in_static,
-    closeness_centrality_in_static,
-    #
+    # closeness_centrality_in_static,
+    betweenness_centrality_in_static,
+
     # degree_in_dynamic,
     # weighted_degree_in_dynamic,
     # degree_centrality_in_dynamic,
@@ -107,7 +112,8 @@ values_to_calculate = [
     # weighted_eigenvector_centrality_in_dynamic,
     # katz_centrality_in_dynamic,
     # weighted_katz_centrality_in_dynamic,
-    closeness_centrality_in_dynamic,
+    # closeness_centrality_in_dynamic,
+    # betweenness_centrality_in_dynamic,
 
     # degree_out_static,
     # weighted_degree_out_static,
@@ -116,7 +122,8 @@ values_to_calculate = [
     # weighted_eigenvector_centrality_out_static,
     # katz_centrality_out_static,
     # weighted_katz_centrality_out_static,
-    closeness_centrality_out_static,
+    # closeness_centrality_out_static,
+    betweenness_centrality_out_static,
 
     # degree_out_dynamic,
     # weighted_degree_out_dynamic,
@@ -125,7 +132,8 @@ values_to_calculate = [
     # weighted_eigenvector_centrality_out_dynamic,
     # katz_centrality_out_dynamic,
     # weighted_katz_centrality_out_dynamic,
-    closeness_centrality_out_dynamic,
+    # closeness_centrality_out_dynamic,
+    # betweenness_centrality_out_dynamic,
 ]
 
 functions = [
@@ -165,7 +173,7 @@ clustering_parameters = [
     # ('reciprocity_static', 1),
 ]
 
-statistics_functions = [len, max, mean, stdev,
+statistics_functions = [len, max, mean, stdev, #(np.percentile, [20]),
                         (np.percentile, [10]), (np.percentile, [30]), (np.percentile, [50]),
                         (np.percentile, [70]), (np.percentile, [75]), (np.percentile, [80]),
                         (np.percentile, [85]), (np.percentile, [90]), (np.percentile, [95]),
