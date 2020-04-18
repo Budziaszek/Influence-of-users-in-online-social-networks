@@ -88,3 +88,21 @@ class SocialNetworkGraph:
         # TODO check if there is a difference
         return nx.betweenness_centrality(self._G if not reverse else self._G.reverse())
 
+    def local_centrality(self, in_neighborhood=True):
+        graph = self._G.reverse() if in_neighborhood else self._G
+        N = {}  # Neighbors and nearest neighbors count
+        for n in self._G.nodes:
+            sp, _ = nx.single_source_dijkstra(graph, n, cutoff=2)
+            del sp[n]
+            print(n)
+            N[n] = len(sp.keys())
+        print("N ready")
+        Q = {n: sum(N[s] for s in (self._G.predecessors(n) if in_neighborhood else self._G.successors(n)))
+             for n in self._G.nodes}
+        print("Q ready")
+        C = {n: sum(Q[s] for s in (self._G.predecessors(n) if in_neighborhood else self._G.successors(n)))
+             for n in self._G.nodes}
+        print("C ready")
+        return C
+
+

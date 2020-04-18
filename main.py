@@ -29,11 +29,13 @@ if display:
         pass
         manager.histogram(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
                           metrics=value,
-                          n_bins=30,
-                          cut=[0.0000000000000001, -1],
+                          n_bins=13,
+                          # cut=[float("-inf"), float("inf")],
+                          cut=[0, float("inf")],
                           half_open=False,
                           integers=False,
-                          step=-1
+                          step=-1,
+                          normalize=True
                           )
         # manager.display(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
         #                 metrics=value,
@@ -44,7 +46,7 @@ if display:
         #                             cut=(1, 100),
         #                             n_bins=100)
         manager.statistics(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                           metrics=value, statistics=statistics_functions)
+                           metrics=value, statistics=statistics_functions, normalize=True)
     # manager.points_2d(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
     #                   metrics=values_to_calculate)
     # manager.distribution_linear(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,

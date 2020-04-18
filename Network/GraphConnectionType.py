@@ -123,5 +123,9 @@ class GraphConnectionType(Enum):
         elif self.value == self.OUT.value:
             return graph.betweenness_centrality(reverse=True)
 
-
+    def local_centrality(self, graph):
+        if self.value == self.IN.value:
+            return graph.local_centrality()
+        elif self.value == self.OUT.value:
+            return graph.local_centrality(in_neighborhood=False)
 

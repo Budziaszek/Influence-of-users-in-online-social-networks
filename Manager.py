@@ -129,11 +129,17 @@ class Manager:
     def clean(self, mode, metrics):
         self._databaseEngine.drop_column(mode.short() + "_" + metrics.get_name())
 
-    def statistics(self, mode, metrics, statistics=None):
-        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name(), "all")
+    def statistics(self, mode, metrics, statistics=None, normalize=False):
+        logging.info("Statistics %s (%s)" % (metrics.get_name(), mode))
+        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name(), "all")  # "all"
 
         if isinstance(data[list(data.keys())[-1]], list):
             data = list(chain(*data.values()))
+
+        if normalize:
+            minimum = min(data)
+            maximum = max(data)
+            data = [(d - minimum) / (maximum - minimum) for d in data]
 
         Statistics.save('statistics/', mode.short() + "_" + metrics.get_name() + ".txt",
                         Statistics.calculate(list(data), statistics))
@@ -188,6 +194,7 @@ class Manager:
     #
     #     plt.show()
 
+
     def display(self, mode, metrics, min, max):
         data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
         for d in data:
@@ -195,16 +202,24 @@ class Manager:
                 print(d, data[d])
 
     # TODO multiple bars
-    def histogram(self, mode, metrics, n_bins, cut=(-1, -1), half_open=False, integers=True, step=-1):
+    def histogram(self, mode, metrics, n_bins, cut=(float("-inf"), float("inf")),
+                  half_open=False, integers=True, step=-1, normalize=False):
+        logging.info("Histogram %s (%s)" % (metrics.get_name(), mode))
         plt.rc('font', size=8)
         fig, ax = plt.subplots()
 
         data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
+        data = {k: v for k, v in data.items() if cut[0] < v < cut[1]}
+
+        if normalize:
+            minimum = min(data.values())
+            maximum = max(data.values())
+            data = {k: (data[k]-minimum)/(maximum-minimum) for k in data}
 
         r_1 = min(data.values())
         r_2 = max(data.values())
-        r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
-        r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
+        # r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
+        # r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
 
         step = (r_2 - r_1) / n_bins if step is -1 else step
         if integers:

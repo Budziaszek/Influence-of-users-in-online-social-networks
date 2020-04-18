@@ -18,6 +18,7 @@ class Metrics:
     WEIGHTED_KATZ_CENTRALITY = "weighted_katz_centrality"
     CLOSENESS_CENTRALITY = "closeness_centrality"
     BETWEENNESS_CENTRALITY = "betweenness_centrality"
+    LOCAL_CENTRALITY = "local_centrality"
 
     # TODO Improve metrics
     COMPOSITION_NEIGHBORS_COUNT = "composition_neighbors"
@@ -33,10 +34,9 @@ class Metrics:
     NEIGHBORS_COUNT_DIFFERENCE = "neighbors_count_difference"
     NEW_NEIGHBORS = "new_neighbors"
 
+    # TODO update JaccardIndex, Density, Reciprocity etc.
     # TODO PageRank
-    # TODO local centrality measure
     # TODO neighborhood centrality
-    # TODO NL centrality
     # TODO centrality with gravity
     # TODO VoteRank (networkx)
 
@@ -89,6 +89,9 @@ class Metrics:
             return connection_type.closeness_centrality(graph)
         if self.value is self.BETWEENNESS_CENTRALITY:
             return connection_type.betweenness_centrality(graph)
+        if self.value is self.LOCAL_CENTRALITY:
+            print("Local")
+            return connection_type.local_centrality(graph)
 
         logging.error('Metrics unimplemented: %s', self.value)
 

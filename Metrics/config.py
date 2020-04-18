@@ -26,6 +26,7 @@ katz_centrality_in_static = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITER
 weighted_katz_centrality_in_static = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 closeness_centrality_in_static = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 betweenness_centrality_in_static = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
+local_centrality_in_static =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 
 degree_in_dynamic = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
 weighted_degree_in_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
@@ -37,6 +38,7 @@ katz_centrality_in_dynamic = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITE
 weighted_katz_centrality_in_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 closeness_centrality_in_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 betweenness_centrality_in_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
+local_centrality_in_dynamic =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 
 degree_out_static = Metrics(Metrics.DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
 weighted_degree_out_static = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
@@ -48,6 +50,7 @@ katz_centrality_out_static = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_OUT, IT
 weighted_katz_centrality_out_static = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 closeness_centrality_out_static = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 betweenness_centrality_out_static = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
+local_centrality_out_static = Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_OUT, ITERATOR_STATIC)
 
 degree_out_dynamic = Metrics(Metrics.DEGREE, CONNECTION_OUT, ITERATOR_DYNAMIC)
 weighted_degree_out_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_OUT, ITERATOR_DYNAMIC)
@@ -60,18 +63,11 @@ weighted_katz_centrality_out_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENT
                                                ITERATOR_DYNAMIC)
 closeness_centrality_out_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
 betweenness_centrality_out_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
+local_centrality_out_dynamic =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
 
-# connections_in_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, c_in, dynamic)
-# neighbors_count_in_dynamic = Metrics(Metrics.DEGREE_CENTRALITY, c_in, dynamic)
-# connections_out_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, c_out, dynamic)
-# neighbors_count_out_dynamic = Metrics(Metrics.DEGREE_CENTRALITY, c_out, dynamic)
-#
-# connections_in_static = Metrics(Metrics.WEIGHTED_DEGREE, c_in, static)
-# degree_centrality_in_static = Metrics(Metrics.DEGREE_CENTRALITY, c_in, static)
-# connections_out_static = Metrics(Metrics.WEIGHTED_DEGREE, c_out, static)
-# neighbors_count_out_static = Metrics(Metrics.DEGREE_CENTRALITY, c_out, static)
-#
-# jaccard_index_neighbors_static = Metrics(Metrics.JACCARD_INDEX_NEIGHBORS, c_in_out, static)
+# jaccard_index_neighbors_static = Metrics(Metrics.JACCARD_INDEX_NEIGHBORS, CONNECTION_IN_OUT, ITERATOR_STATIC)
+# density_in = Metrics(Metrics.DENSITY, CONNECTION_IN, ITERATOR_STATIC)
+
 # composition_1000_6000 = Metrics(Metrics.COMPOSITION_NEIGHBORS_PERCENTS, c_in, static, [1001, 6000])
 # composition_500_1000 = Metrics(Metrics.COMPOSITION_NEIGHBORS_PERCENTS, c_in, static, [501, 1000])
 # composition_100_500 = Metrics(Metrics.COMPOSITION_NEIGHBORS_PERCENTS, c_in, static, [101, 500])
@@ -103,7 +99,8 @@ values_to_calculate = [
     # katz_centrality_in_static,
     # weighted_katz_centrality_in_static,
     # closeness_centrality_in_static,
-    betweenness_centrality_in_static,
+    # betweenness_centrality_in_static,
+    local_centrality_in_static,
 
     # degree_in_dynamic,
     # weighted_degree_in_dynamic,
@@ -114,6 +111,7 @@ values_to_calculate = [
     # weighted_katz_centrality_in_dynamic,
     # closeness_centrality_in_dynamic,
     # betweenness_centrality_in_dynamic,
+    # local_centrality_in_dynamic,
 
     # degree_out_static,
     # weighted_degree_out_static,
@@ -123,7 +121,8 @@ values_to_calculate = [
     # katz_centrality_out_static,
     # weighted_katz_centrality_out_static,
     # closeness_centrality_out_static,
-    betweenness_centrality_out_static,
+    # betweenness_centrality_out_static,
+    local_centrality_out_static,
 
     # degree_out_dynamic,
     # weighted_degree_out_dynamic,
@@ -134,6 +133,7 @@ values_to_calculate = [
     # weighted_katz_centrality_out_dynamic,
     # closeness_centrality_out_dynamic,
     # betweenness_centrality_out_dynamic,
+    # local_centrality_out_dynamic,
 ]
 
 functions = [
