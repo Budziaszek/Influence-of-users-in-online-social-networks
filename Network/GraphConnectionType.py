@@ -56,23 +56,8 @@ class GraphConnectionType(Enum):
         else:
             return []
 
-    def density(self, graph, node):
-        neighbors = self.neighbors(graph, node)
-        #  Remove considered node
-        if node in neighbors:
-            neighbors.remove(node)
-        #  Ignore neighborhood if user have no neighbors or neighborhood to small
-        if len(neighbors) == 0 or len(neighbors) == 1:
-            return 0
-        #  Initialize values - numbers of users in neighborhood connected to user (does NOT include user itself)
-        values = []
-        for n in neighbors:
-            n_neighbors = self.neighbors(graph, n)
-            values.append(len(list(set(n_neighbors).intersection(neighbors))))
-
-        size = (len(neighbors) - 1) * len(neighbors)
-        value = sum(values) / size
-        return value
+    def density(self, graph):
+        return graph.density(graph.successors if self.value == self.OUT.value else graph.predecessors)
 
     def intersection(self, graph_1, graph_2, node):
         neighbors_graph_1 = self.neighbors(graph_1, node)

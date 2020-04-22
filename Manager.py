@@ -13,6 +13,7 @@ from statsmodels.tsa.statespace.tools import diff
 from sklearn.cluster import KMeans
 from statistics import mean, stdev
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from Metrics.MetricsProcessing.Statistics import Statistics
 from Metrics.MetricsProcessing.Histogram import Histogram
@@ -35,8 +36,6 @@ class Manager:
     days = []
     comments_to_add = None
     mode = None
-    authors_ids = None
-    authors_names = None
     colored = '\x1b[34m'
     background = '\x1b[30;44m'
     reset = '\x1b[0m'
@@ -116,7 +115,6 @@ class Manager:
         except Exception:
             pass
         for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
-            # print(user_id, data[user_id])
             bar.next()
             d = data[user_id]
             m = modify_data(d, data_condition_function) if save_to_file or save_to_database else []
@@ -174,26 +172,75 @@ class Manager:
             bins = np.arange(start=r_1, stop=r_2 + 2 * step, step=step)
 
             cnt, bins = np.histogram(list(data.values()), bins)
-
-            # print(r_1, r_2, step)
-            # x = np.arange(r_1, r_2, step)
-            # print(x)
-            print(bins)
-
-            # plt.title(mode.short() + "_" + m.get_name())
             plt.plot(bins[:-1], cnt, label=mode.short() + "_" + m.get_name())
 
         plt.legend()
         plt.show()
 
-    # def histogram_multiple(self, mode, metrics, n_bins):
-    #     x_multi = [np.random.randn(n) for n in [10000, 5000, 2000]]
-    #     fig, ax = plt.subplots()
-    #     ax.hist(x_multi, n_bins, histtype='bar')
-    #     ax.set_title('different sample sizes')
-    #
-    #     plt.show()
+    def correlation(self, mode, metrics, functions, title='correlation_test', do_abs=True):
+        pd.set_option('display.width', None)
+        keys = sorted(self.authors.keys())
+        df = pd.DataFrame()
+        for m in metrics:
+            if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
+                for f in functions:
+                    data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name(), f)
+                    x = []
+                    for key in keys:
+                        x.append(data[key])
+                    df[m.get_name() + "_" + f.__name__] = x
+            else:
+                data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name())
+                x = []
+                for key in keys:
+                    x.append(data[key])
+                df[m.get_name()] = x
 
+        if not os.path.exists('output/correlation'):
+            os.mkdir('output/correlation')
+
+        c = df.corr()
+        c.to_csv(r'output/correlation/' + title + '.txt', index=True, header=True)
+        c = c.abs()
+
+        # to_drop = [column for column in upper.columns if any(upper[column] > 0.80)]
+        # df.drop(to_drop, axis=1, inplace=True)
+        #
+        # for key in df:
+        #     print(key)
+        c_rate = {}
+        for row in c:
+            c_rate[row] = {}
+            c_rate[row]['extreme'] = []
+            c_rate[row]['very high'] = []
+            c_rate[row]['high'] = []
+            c_rate[row]['medium'] = []
+            c_rate[row]['small'] = []
+            c_rate[row]['very small'] = []
+
+        for row in c:
+            for column in c:
+                if row != column:
+                    if c[row][column] > 0.9:
+                        c_rate[row]['extreme'].append(column)
+                    elif c[row][column] > 0.8:
+                        c_rate[row]['very high'].append(column)
+                    elif c[row][column] > 0.7:
+                        c_rate[row]['high'].append(column)
+                    elif c[row][column] > 0.6:
+                        c_rate[row]['medium'].append(column)
+                    elif c[row][column] > 0.5:
+                        c_rate[row]['small'].append(column)
+                    elif c[row][column] is not np.nan:
+                        c_rate[row]['very small'].append(column)
+
+        for key in c_rate:
+            print(key)
+            for r in c_rate[key]:
+                print("\t", str(r), str(c_rate[key][r]))
+
+    def ranking(self, mode, metrics):
+        pass
 
     def display(self, mode, metrics, min, max):
         data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
@@ -201,7 +248,9 @@ class Manager:
             if min < data[d] < max:
                 print(d, data[d])
 
-    # TODO multiple bars
+        # TODO multiple bars
+
+
     def histogram(self, mode, metrics, n_bins, cut=(float("-inf"), float("inf")),
                   half_open=False, integers=True, step=-1, normalize=False):
         logging.info("Histogram %s (%s)" % (metrics.get_name(), mode))
@@ -214,7 +263,7 @@ class Manager:
         if normalize:
             minimum = min(data.values())
             maximum = max(data.values())
-            data = {k: (data[k]-minimum)/(maximum-minimum) for k in data}
+            data = {k: (data[k] - minimum) / (maximum - minimum) for k in data}
 
         r_1 = min(data.values())
         r_2 = max(data.values())
@@ -229,7 +278,6 @@ class Manager:
             bins = np.append(bins[:-1], [r_2])
 
         cnt, bins = np.histogram(list(data.values()), bins)
-        print(sum(cnt))
         if integers:
             if len(bins) > 1:
                 labels = ["[" + str(int(bins[i])) + ", " + str(int(bins[i + 1])) + ")" for i in range(len(bins) - 2)]
@@ -277,54 +325,6 @@ class Manager:
         fig.tight_layout()
         plt.show()
 
-    # def calculate(self, mode, metrics,
-    #               save_to_file=True, save_to_database=True, predict=False, calculate_histogram=False,
-    #               x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
-    #     """
-    #     Calculates metrics values for each user and allows creating files and saving to database.
-    #     :param mode: NeighborhoodMode
-    #         Defines model mode (which comments should me included)
-    #     :param save_to_database: bool
-    #         True - save calculated value to database
-    #     :param metrics: MetricsType
-    #         Calculate function from given class is called
-    #     :param save_to_file: bool
-    #         True - save full data to file
-    #     :param predict: bool
-    #         True - predict time series
-    #     :param calculate_histogram: bool
-    #         True - calculate and save data as a histogram
-    #     :param x_scale: array (float)
-    #         Defines standard classes for the histogram
-    #     :param size_scale: array (int)
-    #         Defines size classes for the histogram
-    #     :param data_condition_function: function
-    #         Condition function defines which values should be removed to e.g. remove None values
-    #     :param data_functions: array (function)
-    #         DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
-    #     """
-    #     if mode != self.mode:
-    #         self._create_graphs(mode)
-    #
-    #     file_writer = self._initialize_file_writer(save_to_file, metrics)
-    #     self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
-    #     bar = ProgressBar("Calculating %s (%s)" % (metrics.get_name(), self.mode),
-    #                       "Calculated", len(self.authors_ids))
-    #     for i in range(len(self.authors_ids)):  # For each author (node)
-    #         bar.next()
-    #         first_activity_date = self._get_users_first_activity_date(self.authors_ids[i])
-    #         data = metrics.calculate(self.authors_ids[i], first_activity_date)
-    #         if predict:
-    #             self.predict(data, i)
-    #         data_modified = modify_data(data, data_condition_function) \
-    #             if calculate_histogram or save_to_file or save_to_database else []
-    #         if calculate_histogram:
-    #             self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
-    #         self._save_data_to_file(file_writer, i, data_modified)
-    #         if save_to_database:
-    #             self._save_to_database(self.mode.short() + "_" + metrics.get_name(), self.authors_ids[i], data_modified)
-    #     self._save_histograms_to_file(str(self.mode.value))
-    #     bar.finish()
 
     def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
                             x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
@@ -359,7 +359,8 @@ class Manager:
             histogram.save('output/' + str(self.mode.value) + "/")
         bar.finish()
 
-    def k_means(self, n_clusters, parameters):
+
+    def k_means(self, n_clusters, parameters, users_selection=None):
         """
         Performs k-means clustering and displays results.
         :param n_clusters: int
@@ -372,8 +373,10 @@ class Manager:
         data, _data = self._prepare_clustering_data(parameters)
         k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
         k_means.fit(data)
-        self._save_clusters([p[0] for p in parameters], k_means.predict(data), k_means.cluster_centers_, _data)
+        self._save_clusters([p[0].short() + "_" + p[1].get_name() for p in parameters],
+                            k_means.predict(data), k_means.cluster_centers_, _data)
         logging.info('Clustering finished. Result saved in output folder.')
+
 
     def predict(self, data, author_id):
         """
@@ -402,6 +405,7 @@ class Manager:
         if self.authors[author_id] in interesting_ids:
             Prediction.plot("Prediction for " + self.authors[author_id], plot_data, title_data)
 
+
     def _get_dates_range(self):
         """
         Checks dates range (find min, max action (comment or post) time and number of days)
@@ -414,6 +418,7 @@ class Manager:
         dates_range = (min(r[0][0], r[1][0]), max(r[0][1], r[1][1]))
         return dates_range
 
+
     def _select_responses_to_posts(self, day_start, day_end, include_responses_from_author):
         """
         Executes query, which selects comments added to posts.
@@ -425,6 +430,7 @@ class Manager:
         c = self._databaseEngine.get_responses_to_posts(day_start, day_end, include_responses_from_author)
         return np.array(c)
 
+
     def _select_responses_to_comments(self, day_start, day_end, include_responses_from_author):
         """
         Executes query, which selects comments added to comments.
@@ -435,6 +441,7 @@ class Manager:
         """
         c = self._databaseEngine.get_responses_to_comments(day_start, day_end, include_responses_from_author)
         return np.array(c)
+
 
     def _select_comments(self, day_start, day_end):
         """
@@ -450,6 +457,7 @@ class Manager:
             self._comments_to_posts_from_others.append_data(day_start, day_end)
         if self.mode.do_read_comments_to_comments_from_others:
             self._comments_to_comments_from_others.append_data(day_start, day_end)
+
 
     def _set_comments_to_add(self):
         """
@@ -471,6 +479,7 @@ class Manager:
             self.comments_to_add.append(self._comments_to_posts_from_others.get_data())
             self.comments_to_add.append(self._comments_to_comments_from_others.get_data())
 
+
     def _read_salon24_comments_data_by_day(self):
         """
         Retrieves the most important values about comments (tuple: (comment author, post author)) by day from database
@@ -487,6 +496,7 @@ class Manager:
         bar.finish()
         self._set_comments_to_add()
         self.days = days
+
 
     def _add_data_to_graphs(self, graph_type):
         """
@@ -510,6 +520,7 @@ class Manager:
             raise Exception("EXCEPTION - wrong graph value")
         logging.info("Graphs created")
 
+
     def _add_data_to_static_graph(self):
         """
         Adds data to static graph - all days.
@@ -520,6 +531,7 @@ class Manager:
             graph.add_edges(edges)
         graph.start_day, graph.end_day = self.days[0], self.days[-1]
         self.static_graph = graph
+
 
     def _add_data_to_dynamic_graphs(self):
         """
@@ -540,6 +552,7 @@ class Manager:
             self.dynamic_graphs.append(graph)
             graph = SocialNetworkGraph()
             i += step
+
 
     def _create_graphs(self, mode):
         """
@@ -562,6 +575,7 @@ class Manager:
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
             self._save_graphs_to_file(graphs_file_name)
 
+
     def _load_graphs_from_file(self, graphs_file_name):
         """
         Loads graphs from file.
@@ -574,6 +588,7 @@ class Manager:
             self.static_graph = dictionary['static']
             self.dynamic_graphs = dictionary['dynamic']
 
+
     def _prepare_clustering_data(self, parameters):
         """
         Prepares data about parameters names in a form of an array, which can be used in clustering.
@@ -585,16 +600,21 @@ class Manager:
         data = {}
         _data = {}
         for parameter in parameters:
-            name, weight = parameter
-            data[name] = np.array(self._databaseEngine.get_array_value_column(name, mean))
+            mode, metrics, weight = parameter
+            name = mode.short() + "_" + metrics.get_name()
+            r = self._databaseEngine.get_array_value_column(name)
+            data[name] = [r[k] for k in sorted(r.keys())]
             minimum, maximum = min(data[name]), max(data[name])
             _data[name] = data[name].copy()
             data[name] = [(x - minimum) / (maximum - minimum) * weight for x in data[name]]
-        return np.column_stack(data[p[0]] for p in parameters), np.column_stack(_data[p[0]] for p in parameters)
+        return np.column_stack(data[p[0].short() + "_" + p[1].get_name()] for p in parameters), np.column_stack(
+            _data[p[0].short() + "_" + p[1].get_name()] for p in parameters)
+
 
     class Cluster:
         def __init__(self):
             pass
+
 
     def _save_clusters(self, parameters_names, classes, centers, data):
         """
@@ -610,7 +630,10 @@ class Manager:
         file_writer = FileWriter()
         file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
 
-        interesting_users = self._databaseEngine.get_interesting_users()
+        interesting_users_50 = self._databaseEngine.get_interesting_users(50)
+        interesting_users_250 = self._databaseEngine.get_interesting_users(250)
+        interesting_users_500 = self._databaseEngine.get_interesting_users(500)
+        interesting_users_1000 = self._databaseEngine.get_interesting_users(1000)
 
         for cluster in range(len(centers)):
             indexes = np.where(classes == cluster)
@@ -634,26 +657,52 @@ class Manager:
                                              round(mean(values), 3), round(std, 3)])
                 logging.debug("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
                               (parameter_name, round(min(values), 3), round(max(values), 3),
-                               round(mean(values), 3), round(stdev(values), 3)))
+                               round(mean(values), 3), round(stdev(values) if len(values) > 1 else values[0], 3)))
 
             logging.debug("Sample users:")
             s = []
+            len_50 = 0
+            len_250 = 0
+            len_500 = 0
+            len_1000 = 0
 
             for i in users_ids:
-                if users_ids in interesting_users:
+                if i in interesting_users_50:
                     s.append(self.authors[i])
                     parameters = [
                         self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
                         for parameter_name in parameters_names]
                     logging.debug("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
+                    len_50 += 1
+                    len_250 += 1
+                    len_500 += 1
+                    len_1000 += 1
+                elif i in interesting_users_250:
+                    len_250 += 1
+                    len_500 += 1
+                    len_1000 += 1
+                elif i in interesting_users_500:
+                    len_500 += 1
+                    len_1000 += 1
+                elif i in interesting_users_1000:
+                    len_1000 += 1
             logging.debug('\n')
             save['sample'].extend([s, *empty_stats])
+            save['first 50'].extend([len_50, len_50 / len(users_ids) * 100, *empty_stats[:-1]])
+            save['first 250'].extend([len_250, len_250 / len(users_ids) * 100, *empty_stats[:-1]])
+            save['first 500'].extend([len_500, len_500 / len(users_ids) * 100, *empty_stats[:-1]])
+            save['first 1000'].extend([len_1000, len_1000 / len(users_ids) * 100, *empty_stats[:-1]])
         file_writer.write_split_row_to_file(['cluster', save['cluster']])
         file_writer.write_split_row_to_file(['size', save['size']])
         file_writer.write_split_row_to_file(['stats', save['stats']])
         for parameter_name in parameters_names:
             file_writer.write_split_row_to_file([parameter_name, save[parameter_name]])
         file_writer.write_split_row_to_file(['sample', save['sample']])
+        file_writer.write_split_row_to_file(['first 50', save['first 50']])
+        file_writer.write_split_row_to_file(['first 250', save['first 250']])
+        file_writer.write_split_row_to_file(['first 500', save['first 500']])
+        file_writer.write_split_row_to_file(['first 1000', save['first 1000']])
+
 
     def _save_data_to_file(self, file_writer, author_id, data):
         """
@@ -668,6 +717,7 @@ class Manager:
         if file_writer is not None:
             file_writer.write_row_to_file([author_id, self.authors[author_id], *data])
 
+
     def _add_data_to_histograms(self, size, data):
         """
         Adds data to histograms.
@@ -678,6 +728,7 @@ class Manager:
         """
         for h in self.histogram_managers:
             h.add_data(size, data)
+
 
     def _initialize_histogram_managers(self, calculate_histogram, data_functions, value, x_scale, size_scale):
         """
@@ -702,6 +753,7 @@ class Manager:
             for data_function in data_functions:
                 self.histogram_managers.append(self.HistogramManager(data_function, value, x_scale, size_scale))
 
+
     def _initialize_file_writer(self, save_to_file, calculated_value):
         """
         Initializes FileWriter if required.
@@ -719,15 +771,17 @@ class Manager:
             return file_writer
         return None
 
+
     def _get_authors_parameter(self, parameter):
         """
         Created array of authors parameters ordered by id.
         :param parameter: str
             Parameter which should be selected from database
         :return: array
-            Array with authors parameters ordered by id
+            Array with id and authors parameters
         """
         return self._databaseEngine.get_authors_parameter(parameter)
+
 
     def _get_graphs_labels(self, empty_count=0):
         """
@@ -743,6 +797,7 @@ class Manager:
             row_captions.insert(0, ",")
         return row_captions
 
+
     def _get_first_activity_dates(self):
         """
         Gets first_activity_date column.
@@ -750,32 +805,33 @@ class Manager:
         """
         return dict(self._databaseEngine.get_first_activity_date())
 
-    # def _get_users_first_activity_date(self, author_id):
-    #     """
-    #     Checks author's first activity date and returns it.
-    #     :param author_id:
-    #         Id of author
-    #     :return: datetime.datetime
-    #         First activity date
-    #     """
-    #     try:
-    #         return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
-    #                                             % ("first_activity_date", author_id))[0][0]
-    #     except IndexError:
-    #         return None
+        # def _get_users_first_activity_date(self, author_id):
+        #     """
+        #     Checks author's first activity date and returns it.
+        #     :param author_id:
+        #         Id of author
+        #     :return: datetime.datetime
+        #         First activity date
+        #     """
+        #     try:
+        #         return self._databaseEngine.execute("SELECT %s FROM authors WHERE id = %s"
+        #                                             % ("first_activity_date", author_id))[0][0]
+        #     except IndexError:
+        #         return None
 
-    # def _calculate_and_get_authors_static_neighborhood_size(self):
-    #     """
-    #     Calculates static neighborhood size and returns it.
-    #     :return: array (int)
-    #         Neighborhoods sizes
-    #     """
-    #     if self.static_neighborhood_size is None:
-    #         calculated_value = Metrics(Metrics.DEGREE_CENTRALITY, GraphConnectionType.IN,
-    #                                    GraphIterator(GraphIterator.GraphMode.STATIC))
-    #         self.static_neighborhood_size = {i: calculated_value.calculate(i, self._get_users_first_activity_date(i))[0]
-    #                                          for i in self.authors.keys()}
-    #     return self.static_neighborhood_size
+        # def _calculate_and_get_authors_static_neighborhood_size(self):
+        #     """
+        #     Calculates static neighborhood size and returns it.
+        #     :return: array (int)
+        #         Neighborhoods sizes
+        #     """
+        #     if self.static_neighborhood_size is None:
+        #         calculated_value = Metrics(Metrics.DEGREE_CENTRALITY, GraphConnectionType.IN,
+        #                                    GraphIterator(GraphIterator.GraphMode.STATIC))
+        #         self.static_neighborhood_size = {i: calculated_value.calculate(i, self._get_users_first_activity_date(i))[0]
+        #                                          for i in self.authors.keys()}
+        #     return self.static_neighborhood_size
+
 
     def _save_to_database(self, column_name, author_id, data):
         """
@@ -787,6 +843,7 @@ class Manager:
         """
         self._databaseEngine.update_array_value_column(column_name, author_id, data)
 
+
     def _save_graphs_to_file(self, graphs_file_name):
         """
         Saves graphs to file.
@@ -795,6 +852,7 @@ class Manager:
         """
         with open(graphs_file_name, 'wb') as file:
             pickle.dump({'static': self.static_graph, 'dynamic': self.dynamic_graphs}, file)
+
 
     def _save_histograms_to_file(self, mode_name):
         """

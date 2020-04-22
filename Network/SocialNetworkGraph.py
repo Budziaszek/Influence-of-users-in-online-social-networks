@@ -43,9 +43,12 @@ class SocialNetworkGraph:
     def has_edge(self, u, v):
         return self._G.has_edge(u, v)
 
-    def reciprocity(self, nodes, neighborhood_limit=None):
-        if neighborhood_limit is None:
-            return nx.algorithms.reciprocity(self._G, nodes)
+    def reciprocity(self, nodes=None):
+        r = nx.algorithms.reciprocity(self._G, nodes if nodes else self.nodes)
+        return {k: r[k] if r[k] is not None else 0 for k in r}
+
+    def density(self, neighbors_function):
+        return {n: nx.density(self._G.subgraph([n, *neighbors_function(n)])) for n in self._G.nodes}
 
     def degree(self, weight=False):
         if weight:
@@ -96,13 +99,10 @@ class SocialNetworkGraph:
             del sp[n]
             print(n)
             N[n] = len(sp.keys())
-        print("N ready")
         Q = {n: sum(N[s] for s in (self._G.predecessors(n) if in_neighborhood else self._G.successors(n)))
              for n in self._G.nodes}
-        print("Q ready")
         C = {n: sum(Q[s] for s in (self._G.predecessors(n) if in_neighborhood else self._G.successors(n)))
              for n in self._G.nodes}
-        print("C ready")
         return C
 
 

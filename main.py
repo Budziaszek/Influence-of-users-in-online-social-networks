@@ -1,7 +1,7 @@
 import logging
 from Manager import Manager
 from Metrics.config import *
-from Utility.Functions import coefficient_of_variation, without_none, without_nan_none
+from Utility.Functions import coefficient_of_variation, without_none, without_nan_none, without_nan
 import matplotlib.pyplot as plt
 
 from statistics import mean, stdev
@@ -11,8 +11,11 @@ logging.basicConfig(level=logging.INFO)
 manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)
 
 calculate = False
-display = True
+display = False
+correlation = True
+ranking = False
 cluster = False
+
 
 if calculate:
     for mode in modes_to_calculate:
@@ -21,7 +24,7 @@ if calculate:
                               save_to_file=False,
                               metrics=value,
                               save_to_database=True,
-                              data_condition_function=without_nan_none
+                              data_condition_function=without_nan
                               )
 
 if display:
@@ -61,8 +64,14 @@ if display:
     #                   integers=True,
     #                   step=200)
 
+if correlation:
+    manager.correlation(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, values_to_calculate, functions)
+
+if ranking:
+    manager.ranking(NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS, values_to_calculate)
+
 if cluster:
-    n_clusters = [10]
+    n_clusters = [6]
 
     for n in n_clusters:
-        manager.k_means(n, clustering_parameters)
+        manager.k_means(n, clustering_scenario_1)

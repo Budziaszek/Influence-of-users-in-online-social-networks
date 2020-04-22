@@ -127,11 +127,11 @@ class PostgresDatabaseEngine(DatabaseEngine):
                             + ("" if include_responses_from_author
                                else "AND c.author_id!=p.author_id"))
 
-    def get_interesting_users(self):
+    def get_interesting_users(self, limit=50):
         return self.execute("""SELECT id 
                                 FROM authors 
-                                ORDER BY po_in_neighbors_count_static DESC
-                                LIMIT 50""")
+                                ORDER BY po_in_degree_static DESC
+                                LIMIT """ + str(limit))
 
     def get_authors_parameter(self, parameter):
         return dict(self.execute("SELECT id, " + parameter + " FROM authors"))

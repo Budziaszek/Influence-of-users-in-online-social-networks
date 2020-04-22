@@ -1,3 +1,4 @@
+import collections
 from statistics import mean, stdev
 import numpy
 
@@ -20,11 +21,42 @@ def without_nan_none(value):
     return True
 
 
+def without_nan(value):
+    if value is None or value is numpy.nan:
+        return False
+    return True
+
+
 def coefficient_of_variation(data):
     if len(data) > 1 and mean(data) > 0:
-        return stdev(data) / mean(data)
+        return numpy.std(data) / mean(data)
     else:
         return 0
+
+
+def counts(data):
+    # Generate a table of sorted (value, frequency) pairs.
+    table = collections.Counter(iter(data)).most_common()
+    if not table:
+        return table
+    # Extract the values with the highest frequency.
+    maxfreq = table[0][1]
+    for i in range(1, len(table)):
+        if table[i][1] != maxfreq:
+            table = table[:i]
+            break
+    return table
+
+
+def max_mode(data):
+    # Generate a table of sorted (value, frequency) pairs.
+    table = counts(data)
+    if len(table) == 1:
+        return table[0][0]
+    elif table:
+        return max(table, key=lambda item: item[1])[0]
+    else:
+        print("HUSTON MAMY PROBLEM")
 
 
 def make_data_positive(data):

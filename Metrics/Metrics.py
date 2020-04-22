@@ -25,7 +25,7 @@ class Metrics:
     COMPOSITION_NEIGHBORS_PERCENTS = "composition_neighbors_percents"
 
     # NEIGHBOTHOOD
-    DENSITY = "density"
+    NEIGHBORHOOD_DENSITY = "neighborhood_density"
     RECIPROCITY = "reciprocity"
     JACCARD_INDEX_NEIGHBORS = "jaccard_index"
 
@@ -41,8 +41,10 @@ class Metrics:
     # TODO VoteRank (networkx)
 
     def get_name(self):
-        con = self.connection_type.value if not isinstance(self.connection_type, list) \
-            else '_'.join([x.value for x in self.connection_type])
+        con = ""
+        if self.connection_type is not None:
+            con = self.connection_type.value if not isinstance(self.connection_type, list) \
+                else '_'.join([x.value for x in self.connection_type])
         v = con + "_" + self.value + "_" + '_'.join([str(x) for x in self.graph_iterator.graph_mode])
         return v + "_" + '_'.join([str(x) for x in self.data]) if self.data is not None else v
 
@@ -55,7 +57,7 @@ class Metrics:
         if not isinstance(connection_type, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
             self.connection_type = [connection_type, connection_type]
 
-    def calculate(self, users_ids, first_activity_dates):
+    def calculate(self, users_ids, first_activity_dates, none_before=False):
         data = defaultdict(list)
         self.graph_iterator.reset()
         while not self.graph_iterator.stop:
@@ -65,7 +67,7 @@ class Metrics:
             for key in users_ids:
                 if first_activity_dates[key] is None or first_activity_dates[key] <= end:
                     data[key].append(graph_data[key] if key in graph_data else 0)
-                else:
+                elif none_before:
                     data[key].append(None)
         return data
 
@@ -90,15 +92,19 @@ class Metrics:
         if self.value is self.BETWEENNESS_CENTRALITY:
             return connection_type.betweenness_centrality(graph)
         if self.value is self.LOCAL_CENTRALITY:
-            print("Local")
             return connection_type.local_centrality(graph)
+        if self.value is self.RECIPROCITY:
+            return graph.reciprocity()
+        if self.value is self.JACCARD_INDEX_NEIGHBORS:
+            return self._jaccard_index(connection_type, graph)
+        if self.value is self.NEIGHBORHOOD_DENSITY:
+            return connection_type.density(graph)
 
         logging.error('Metrics unimplemented: %s', self.value)
 
     def _calculate_for_user(self, connection_type, graph, user_id):
-        if self.value is self.DEGREE_CENTRALITY:
-            return connection_type.old_degree_centrality(graph, user_id)
-        if self.value is self.DENSITY:
+
+        if self.value is self.NEIGHBORHOOD_DENSITY:
             return connection_type.density(graph, user_id)
         if self.value is self.RECIPROCITY:
             dictionary = graph.reciprocity([user_id])
@@ -127,13 +133,19 @@ class Metrics:
         return (len(neighbors_2) - len(neighbors_1)) / (len(neighbors_2) + 1)
 
     @staticmethod
-    def _jaccard_index(connection_type, graph, node):
-        neighbors_1 = connection_type[0].neighbors(graph[0], node)
-        neighbors_2 = connection_type[1].neighbors(graph[1], node)
-        if len(neighbors_1) == 0 or len(neighbors_2) == 0:
-            return 0
-        intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
-        return len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
+    def _jaccard_index(connection_type, graph):
+        jaccard_index = {}
+        if not isinstance(graph, list):
+            graph = [graph, graph]
+        for node in set(graph[0].nodes).union(set(graph[1].nodes)):
+            neighbors_1 = connection_type[0].neighbors(graph[0], node)
+            neighbors_2 = connection_type[1].neighbors(graph[1], node)
+            if len(neighbors_1) == 0 or len(neighbors_2) == 0:
+                jaccard_index[node] = 0
+            else:
+                intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
+                jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
+        return jaccard_index
 
     @staticmethod
     def _new_neighbors(connection_type, graph, node):
@@ -157,4 +169,3 @@ class Metrics:
         if percent is True:
             return count / len(neighbors) if len(neighbors) > 0 else 0
         return count
-
