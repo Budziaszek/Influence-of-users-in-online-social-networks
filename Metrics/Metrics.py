@@ -20,21 +20,39 @@ class Metrics:
     BETWEENNESS_CENTRALITY = "betweenness_centrality"
     LOCAL_CENTRALITY = "local_centrality"
 
-    # TODO Improve metrics
-    COMPOSITION_NEIGHBORS_COUNT = "composition_neighbors"
-    COMPOSITION_NEIGHBORS_PERCENTS = "composition_neighbors_percents"
-
     # NEIGHBOTHOOD
     NEIGHBORHOOD_DENSITY = "neighborhood_density"
     RECIPROCITY = "reciprocity"
     JACCARD_INDEX_NEIGHBORS = "jaccard_index"
+    NEIGHBORHOOD_QUALITY = "neighborhood_quality"
 
     # STABILITY
     DIVIDE_NEIGHBORS = "divide_neighbors"
     NEIGHBORS_COUNT_DIFFERENCE = "neighbors_count_difference"
     NEW_NEIGHBORS = "new_neighbors"
 
-    # TODO update JaccardIndex, Density, Reciprocity etc.
+    METRICS_LIST = [
+        DEGREE,
+        WEIGHTED_DEGREE,
+        DEGREE_CENTRALITY,
+        EIGENVECTOR_CENTRALITY,
+        WEIGHTED_EIGENVECTOR_CENTRALITY,
+        KATZ_CENTRALITY,
+        WEIGHTED_KATZ_CENTRALITY,
+        CLOSENESS_CENTRALITY,
+        BETWEENNESS_CENTRALITY,
+        LOCAL_CENTRALITY,
+
+        NEIGHBORHOOD_DENSITY,
+        RECIPROCITY,
+        JACCARD_INDEX_NEIGHBORS,
+        NEIGHBORHOOD_QUALITY,
+
+        DIVIDE_NEIGHBORS,
+        NEIGHBORS_COUNT_DIFFERENCE,
+        NEW_NEIGHBORS,
+    ]
+
     # TODO PageRank
     # TODO neighborhood centrality
     # TODO centrality with gravity
@@ -45,24 +63,22 @@ class Metrics:
         if self.connection_type is not None:
             con = self.connection_type.value if not isinstance(self.connection_type, list) \
                 else '_'.join([x.value for x in self.connection_type])
-        v = con + "_" + self.value + "_" + '_'.join([str(x) for x in self.graph_iterator.graph_mode])
-        return v + "_" + '_'.join([str(x) for x in self.data]) if self.data is not None else v
+        return con + "_" + self.value + "_" + '_'.join([str(x) for x in self.graph_iterator.graph_mode])
 
-    def __init__(self, value, connection_type, graph_iterator, data=None):
+    def __init__(self, value, connection_type, graph_iterator):
         self.connection_type = connection_type
         self.graph_iterator = graph_iterator
         self.is_complex = False
         self.value = value
-        self.data = data
         if not isinstance(connection_type, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
             self.connection_type = [connection_type, connection_type]
 
-    def calculate(self, users_ids, first_activity_dates, none_before=False):
+    def calculate(self, users_ids, first_activity_dates, none_before=False, users_selection=None):
         data = defaultdict(list)
         self.graph_iterator.reset()
         while not self.graph_iterator.stop:
             graph = self.graph_iterator.next()
-            graph_data = self._call_metric_function(self.connection_type, graph)
+            graph_data = self._call_metric_function(self.connection_type, graph, users_selection=users_selection)
             end = graph[1].end_day if isinstance(graph, list) else graph.end_day
             for key in users_ids:
                 if first_activity_dates[key] is None or first_activity_dates[key] <= end:
@@ -71,57 +87,45 @@ class Metrics:
                     data[key].append(None)
         return data
 
-    def _call_metric_function(self, connection_type, graph):
+    def _call_metric_function(self, connection_type, graph, users_selection=None):
         # CENTRALITY
-        if self.value is self.DEGREE:
+        if self.value == self.DEGREE:
             return connection_type.degree(graph)
-        if self.value is self.WEIGHTED_DEGREE:
+        if self.value == self.WEIGHTED_DEGREE:
             return connection_type.weighted_degree(graph)
-        if self.value is self.DEGREE_CENTRALITY:
+        if self.value == self.DEGREE_CENTRALITY:
             return connection_type.degree_centrality(graph)
-        if self.value is self.EIGENVECTOR_CENTRALITY:
+        if self.value == self.EIGENVECTOR_CENTRALITY:
             return connection_type.eigenvector_centrality(graph)
-        if self.value is self.WEIGHTED_EIGENVECTOR_CENTRALITY:
+        if self.value == self.WEIGHTED_EIGENVECTOR_CENTRALITY:
             return connection_type.eigenvector_centrality(graph, weight=True)
-        if self.value is self.KATZ_CENTRALITY:
+        if self.value == self.KATZ_CENTRALITY:
             return connection_type.katz_centrality(graph)
-        if self.value is self.WEIGHTED_KATZ_CENTRALITY:
+        if self.value == self.WEIGHTED_KATZ_CENTRALITY:
             return connection_type.katz_centrality(graph, weight=True)
-        if self.value is self.CLOSENESS_CENTRALITY:
+        if self.value == self.CLOSENESS_CENTRALITY:
             return connection_type.closeness_centrality(graph)
-        if self.value is self.BETWEENNESS_CENTRALITY:
+        if self.value == self.BETWEENNESS_CENTRALITY:
             return connection_type.betweenness_centrality(graph)
-        if self.value is self.LOCAL_CENTRALITY:
+        if self.value == self.LOCAL_CENTRALITY:
             return connection_type.local_centrality(graph)
-        if self.value is self.RECIPROCITY:
+        if self.value == self.RECIPROCITY:
             return graph.reciprocity()
-        if self.value is self.JACCARD_INDEX_NEIGHBORS:
+        if self.value == self.JACCARD_INDEX_NEIGHBORS:
             return self._jaccard_index(connection_type, graph)
-        if self.value is self.NEIGHBORHOOD_DENSITY:
+        if self.value == self.NEIGHBORHOOD_DENSITY:
             return connection_type.density(graph)
-
-        logging.error('Metrics unimplemented: %s', self.value)
-
-    def _calculate_for_user(self, connection_type, graph, user_id):
-
-        if self.value is self.NEIGHBORHOOD_DENSITY:
-            return connection_type.density(graph, user_id)
-        if self.value is self.RECIPROCITY:
-            dictionary = graph.reciprocity([user_id])
-            return dictionary[user_id] if user_id in dictionary else 0
-        if self.value is self.JACCARD_INDEX_NEIGHBORS:
-            return self._jaccard_index(connection_type, graph, user_id)
-        if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
-            return self._neighborhood_composition(connection_type, graph, user_id, self.data)
-        if self.value is self.COMPOSITION_NEIGHBORS_PERCENTS:
-            return self._neighborhood_composition(connection_type, graph, user_id, self.data, percent=True)
-        if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
-            return self._count_difference(connection_type, graph, user_id)
-        if self.value is self.NEW_NEIGHBORS:
-            return self._new_neighbors(connection_type, graph, user_id)
-        if self.value is self.DIVIDE_NEIGHBORS:
-            return connection_type.degree_centrality(graph[0], user_id) \
-                   / (connection_type.degree_centrality(graph[1], user_id) + 1)
+        # if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
+        #     return self._neighborhood_composition(connection_type, graph, user_id, self.data)
+        if self.value == self.NEIGHBORHOOD_QUALITY:
+            return self._neighborhood_composition(connection_type, graph, users_selection=users_selection, percent=True)
+        # if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
+        #     return self._count_difference(connection_type, graph, user_id)
+        # if self.value is self.NEW_NEIGHBORS:
+        #     return self._new_neighbors(connection_type, graph, user_id)
+        # if self.value is self.DIVIDE_NEIGHBORS:
+        #     return connection_type.degree_centrality(graph[0], user_id) \
+        #            / (connection_type.degree_centrality(graph[1], user_id) + 1)
 
         logging.error('Metrics unimplemented: %s', self.value)
 
@@ -158,14 +162,13 @@ class Metrics:
         return len(difference) / len(union)
 
     @staticmethod
-    def _neighborhood_composition(connection_type, graph, node, size, percent=False):
-        neighbors = connection_type.neighbors(graph, node)
-        count = 0
-        for neighbor in neighbors:
-            neighbors_count = connection_type.degree_centrality(graph, neighbor)
-            if neighbors_count >= size[0]:
-                if neighbors_count <= size[1]:
-                    count += 1
-        if percent is True:
-            return count / len(neighbors) if len(neighbors) > 0 else 0
-        return count
+    def _neighborhood_composition(connection_type, graph, users_selection, percent=False):
+        composition = {}
+        for node in graph.nodes:
+            neighbors = list(connection_type.neighbors(graph, node))
+            count = len(set(users_selection).intersection(set(neighbors)))
+            if percent is True:
+                composition[node] = count / len(users_selection) if len(users_selection) > 0 else 0
+            else:
+                composition[node] = count
+        return composition

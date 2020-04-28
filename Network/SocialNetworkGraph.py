@@ -97,7 +97,6 @@ class SocialNetworkGraph:
         for n in self._G.nodes:
             sp, _ = nx.single_source_dijkstra(graph, n, cutoff=2)
             del sp[n]
-            print(n)
             N[n] = len(sp.keys())
         Q = {n: sum(N[s] for s in (self._G.predecessors(n) if in_neighborhood else self._G.successors(n)))
              for n in self._G.nodes}

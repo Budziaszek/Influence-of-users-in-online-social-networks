@@ -8,14 +8,20 @@ class GraphIterator:
         DYNAMIC = "dynamic"
         DYNAMIC_CURR_NEXT = "dynamic_curr_next"
 
+        ITERATOR_TYPES = [
+            STATIC,
+            DYNAMIC,
+            DYNAMIC_CURR_NEXT
+        ]
+
     @staticmethod
     def set_graphs(static_graph, dynamic_graphs):
         GraphIterator.static_graph = static_graph
         GraphIterator.dynamic_graphs = dynamic_graphs
 
     def __init__(self, graph_mode):
-        self.graph_mode = graph_mode
-        self._graph_mode = graph_mode
+        self.graph_mode = [graph_mode] if not isinstance(graph_mode, list) else graph_mode
+        self._graph_mode = self.graph_mode
         self.current_id = 0
         self.stop = False
 
@@ -31,12 +37,12 @@ class GraphIterator:
             raise Exception("Incorrect GraphIterator mode configuration. Only one type of dynamic mode is allowed.")
         graphs = []
         for mode in self.graph_mode:
-            if mode is self.ITERATOR.DYNAMIC:
+            if mode == self.ITERATOR.DYNAMIC:
                 graphs.append(GraphIterator.dynamic_graphs[self.current_id])
                 self.current_id += 1
-            elif mode is self.ITERATOR.STATIC:
+            elif mode == self.ITERATOR.STATIC:
                 graphs.append(GraphIterator.static_graph)
-            elif mode is self.ITERATOR.DYNAMIC_CURR_NEXT:
+            elif mode == self.ITERATOR.DYNAMIC_CURR_NEXT:
                 graphs.extend([GraphIterator.dynamic_graphs[self.current_id],
                                GraphIterator.dynamic_graphs[self.current_id + 1]])
                 self.current_id += 1

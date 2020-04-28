@@ -8,13 +8,13 @@ from Network.NeighborhoodMode import NeighborhoodMode
 from Utility.Functions import coefficient_of_variation, max_mode
 import numpy as np
 
-CONNECTION_IN = GraphConnectionType.IN
-CONNECTION_OUT = GraphConnectionType.OUT
-CONNECTION_IN_OUT = [GraphConnectionType.IN, GraphConnectionType.OUT]
+CONNECTION_IN = GraphConnectionType(GraphConnectionType.IN)
+CONNECTION_OUT = GraphConnectionType(GraphConnectionType.OUT)
+CONNECTION_IN_OUT = [GraphConnectionType(GraphConnectionType.IN), GraphConnectionType(GraphConnectionType.OUT)]
 
-ITERATOR_STATIC = GraphIterator([GraphIterator.ITERATOR.STATIC])
-ITERATOR_DYNAMIC = GraphIterator([GraphIterator.ITERATOR.DYNAMIC])
-ITERATOR_CURRENT_NEXT = GraphIterator([GraphIterator.ITERATOR.DYNAMIC_CURR_NEXT])
+ITERATOR_STATIC = GraphIterator(GraphIterator.ITERATOR.STATIC)
+ITERATOR_DYNAMIC = GraphIterator(GraphIterator.ITERATOR.DYNAMIC)
+ITERATOR_CURRENT_NEXT = GraphIterator(GraphIterator.ITERATOR.DYNAMIC_CURR_NEXT)
 ITERATOR_DYNAMIC_AND_STATIC = GraphIterator([GraphIterator.ITERATOR.DYNAMIC, GraphIterator.ITERATOR.STATIC])
 
 degree_in_static = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_STATIC)
@@ -70,6 +70,8 @@ jaccard_index_neighbors_static = Metrics(Metrics.JACCARD_INDEX_NEIGHBORS, CONNEC
 reciprocity = Metrics(Metrics.RECIPROCITY, None, ITERATOR_STATIC)
 density_neighborhood_in = Metrics(Metrics.NEIGHBORHOOD_DENSITY, CONNECTION_IN, ITERATOR_STATIC)
 density_neighborhood_out = Metrics(Metrics.NEIGHBORHOOD_DENSITY, CONNECTION_OUT, ITERATOR_STATIC)
+neighborhood_quality_in = Metrics(Metrics.NEIGHBORHOOD_QUALITY, CONNECTION_IN, ITERATOR_STATIC)
+neighborhood_quality_out = Metrics(Metrics.NEIGHBORHOOD_QUALITY, CONNECTION_OUT, ITERATOR_STATIC)
 
 # density_in = Metrics(Metrics.DENSITY, CONNECTION_IN, ITERATOR_STATIC)
 
@@ -106,7 +108,7 @@ values_to_calculate = [
     # closeness_centrality_in_static,
     # betweenness_centrality_in_static,
     # local_centrality_in_static,
-    #
+    # # #
     # degree_in_dynamic,
     # weighted_degree_in_dynamic,
     # # degree_centrality_in_dynamic,
@@ -118,20 +120,20 @@ values_to_calculate = [
     # betweenness_centrality_in_dynamic,
     # local_centrality_in_dynamic,
     #
-    degree_out_static,
-    weighted_degree_out_static,
-    # degree_centrality_out_static,
-    eigenvector_centrality_out_static,
-    weighted_eigenvector_centrality_out_static,
-    # # katz_centrality_out_static,
-    # # weighted_katz_centrality_out_static,
-    closeness_centrality_out_static,
-    betweenness_centrality_out_static,
-    local_centrality_out_static,
+    # degree_out_static,
+    # weighted_degree_out_static,
+    # # degree_centrality_out_static,
+    # eigenvector_centrality_out_static,
+    # weighted_eigenvector_centrality_out_static,
+    # # # katz_centrality_out_static,
+    # # # weighted_katz_centrality_out_static,
+    # closeness_centrality_out_static,
+    # betweenness_centrality_out_static,
+    # local_centrality_out_static,
     #
     # degree_out_dynamic,
     # weighted_degree_out_dynamic,
-    # degree_centrality_out_dynamic,
+    # # degree_centrality_out_dynamic,
     # eigenvector_centrality_out_dynamic,
     # weighted_eigenvector_centrality_out_dynamic,
     # # katz_centrality_out_dynamic,
@@ -139,11 +141,14 @@ values_to_calculate = [
     # closeness_centrality_out_dynamic,
     # betweenness_centrality_out_dynamic,
     # local_centrality_out_dynamic,
-
+    #
     # jaccard_index_neighbors_static,
     # reciprocity,
     # density_neighborhood_in,
     # density_neighborhood_out,
+    neighborhood_quality_in,
+    neighborhood_quality_out,
+
 ]
 
 functions = [
@@ -171,17 +176,33 @@ clustering_parameters = [
 
 clustering_scenario_1 = [
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_out_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_in_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_out_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_in_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_out_static, 1),
-    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, eigenvector_centrality_in_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, eigenvector_centrality_out_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_out_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_out_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, reciprocity, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, jaccard_index_neighbors_static, 1)
+]
+
+clustering_scenario_2 = [
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_in_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_out_static, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, reciprocity, 1),
-    # (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, jaccard_index_neighbors_static, 1)
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, betweenness_centrality_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, local_centrality_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_eigenvector_centrality_in_static, 1),
+
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_in_dynamic, 1, statistics.median),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, betweenness_centrality_in_dynamic, 1, statistics.median),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, local_centrality_in_dynamic, 1, statistics.median),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_eigenvector_centrality_in_dynamic, 1, statistics.median),
+]
+
+clustering_scenario_3 = [
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_eigenvector_centrality_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, closeness_centrality_in_static, 1),
+
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, density_neighborhood_in, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, neighborhood_quality_in, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, reciprocity, 1),
 ]
 
 statistics_functions = [len, max, mean, stdev, #(np.percentile, [20]),

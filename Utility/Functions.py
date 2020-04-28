@@ -55,8 +55,6 @@ def max_mode(data):
         return table[0][0]
     elif table:
         return max(table, key=lambda item: item[1])[0]
-    else:
-        print("HUSTON MAMY PROBLEM")
 
 
 def make_data_positive(data):

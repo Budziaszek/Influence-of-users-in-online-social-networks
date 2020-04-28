@@ -31,10 +31,14 @@ class Statistics:
         return statistics_values
 
     @staticmethod
-    def save(folder, filename, values):
+    def save(folder, filename, values, log_fun=None):
         if not os.path.exists('output/' + folder):
             os.mkdir('output/' + folder)
+        if log_fun:
+            log_fun(filename)
         with open('output/' + folder + filename, "w+") as file:
             for key in values:
                 file.write(str(key) + "," + str(values[key]) + "\n")
                 logging.info(str(key) + "," + str(values[key]))
+                if log_fun:
+                    log_fun('\t' + str(key) + "," + str(values[key]))
