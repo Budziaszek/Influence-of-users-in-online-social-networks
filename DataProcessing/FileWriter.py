@@ -32,8 +32,8 @@ class FileWriter:
                 row.append(d)
         self.write_row_to_file(row)
 
-    def set_all(self, mode, file_name, labels=None):
-        self.set_path(mode, file_name)
+    def set_all(self, neighborhood_mode, file_name, labels=None):
+        self.set_path(neighborhood_mode, file_name)
         self.clean_file()
         if labels is not None:
             self.write_row_to_file(labels)

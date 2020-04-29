@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from statistics import mean, stdev
 
-manager = Manager(parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)
+manager = Manager(connection_parameters="dbname='salon24' user='sna_user' host='localhost' password='sna_password'", test=False)
 
 calculate = False
 display = False
@@ -16,8 +16,8 @@ ranking = False
 cluster = False
 
 if calculate:
-    for mode in modes_to_calculate:
-        manager.check_graphs(mode)
+    for neighborhood_mode in modes_to_calculate:
+        manager.check_graphs(neighborhood_mode)
         for value in values_to_calculate:
             manager.calculate(save_to_file=False,
                               metrics=value,
@@ -30,7 +30,7 @@ if calculate:
 if display:
     for value in values_to_calculate:
         pass
-        manager.histogram(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+        manager.histogram(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
                           metrics=value,
                           n_bins=13,
                           # cut=[float("-inf"), float("inf")],
@@ -40,23 +40,23 @@ if display:
                           step=-1,
                           normalize=True
                           )
-        # manager.display_between_range(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+        # manager.display_between_range(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
         #                               metrics=value,
         #                               min=0,
         #                               max=0.030)
-        # manager.distribution_linear(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+        # manager.distribution_linear(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
         #                             metrics=[value],
         #                             cut=(1, 100),
         #                             n_bins=100)
-        manager.statistics(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+        manager.statistics(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
                            metrics=value, statistics=statistics_functions, normalize=True)
-    # manager.points_2d(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+    # manager.points_2d(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
     #                   metrics=values_to_calculate)
-    # manager.distribution_linear(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+    # manager.distribution_linear(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
     #                             metrics=values_to_calculate,
     #                             cut=(500, 1000),
     #                             n_bins=500)
-    # manager.histogram(mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+    # manager.histogram(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
     #                   metrics=values_to_calculate,
     #                   n_bins=10,
     #                   cut=[1, -1],
@@ -68,7 +68,7 @@ if correlation:
     manager.correlation(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, values_to_calculate, functions)
 
 if ranking:
-    manager.ranking(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, values_to_calculate, functions, table_mode="value")
+    manager.table(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, values_to_calculate, functions, table_mode="value")
 
 if cluster:
     n_clusters = [6]

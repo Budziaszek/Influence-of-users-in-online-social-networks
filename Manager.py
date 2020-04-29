@@ -1,14 +1,14 @@
-import collections
 import datetime as dt
 import logging
 import math
 import os
 import pickle
 import warnings
-from collections import defaultdict, Counter
+from collections import defaultdict
 from itertools import chain
 from pathlib import Path
 import numpy as np
+from matplotlib.transforms import blended_transform_factory
 from statsmodels.tsa.statespace.tools import diff
 from sklearn.cluster import KMeans
 from statistics import mean, stdev
@@ -36,7 +36,7 @@ class Manager:
     static_graph = None
     days = []
     comments_to_add = None
-    mode = None
+    neighborhood_mode = None
     colored = '\x1b[34m'
     background = '\x1b[30;44m'
     reset = '\x1b[0m'
@@ -72,11 +72,11 @@ class Manager:
         def save(self, folder):
             self._histogram.save(folder, self.file_name)
 
-    def __init__(self, parameters, test=False):
+    def __init__(self, connection_parameters, test=False):
         """
         Creates DatabaseEngine that connects to database with given parameters and later allow operations
         (e.g. queries). Define time intervals. Initializes some variables for future use.
-        :param parameters: str
+        :param connection_parameters: str
             Defines connection to database
         :param test: bool, optional
             True - calculate model only for short period of time
@@ -89,54 +89,80 @@ class Manager:
         self._comments_to_posts_from_others = self.CommentsReader(self._select_responses_to_posts, False)
 
         self.histogram_managers = []
-        self._databaseEngine.connect(parameters)
+        self._databaseEngine.connect(connection_parameters)
         self._databaseEngine.create_first_activity_date_column()
         self._dates_range = self._get_dates_range()
         self._days_count = (self._dates_range[1] - self._dates_range[0]).days
         if test is True:
             self._days_count = self._number_of_days_in_interval * 5
         self.authors = self._get_authors_parameter("name")
-        self.static_neighborhood_size = None
 
     def calculate(self, metrics, save_to_file=True, save_to_database=True,
-                  data_condition_function=None, do_users_selection=None, safe_save=False, log_fun=None):
-        # if mode != self.mode:
-        #     self._create_graphs(mode)
+                  data_condition_function=None, do_users_selection=None, log_fun=logging.INFO):
+        """
+        Calculated metrics for current neighborhood_mode (self.neighborhood_mode).
+        :param metrics: Metrics
+            Metrics definition
+        :param save_to_file: boolean
+            True - saves results to file
+        :param save_to_database:
+            True - saves results to database
+        :param data_condition_function: function
+            Defines values that will be accepted (unaccepted will be replaced using Manager.modify_data)
+        :param do_users_selection:
+            True - defines if only 10% of users with highest degree should be chosen.
+        :param log_fun:
+            Defines logging function.
+        """
         file_writer = self._initialize_file_writer(save_to_file, metrics)
 
-        logging.info("Calculating %s (%s)" % (metrics.get_name(), self.mode))
+        log_fun("Calculating %s (%s)" % (metrics.get_name(), self.neighborhood_mode))
         first_activity_dates = self._get_first_activity_dates()
         users_selection = self.select_users(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static,
                                             percent=0.1) if do_users_selection else None
         data = metrics.calculate(self.authors.keys(), first_activity_dates, users_selection=users_selection)
         log_fun("Calculated " + metrics.get_name() + ". Saving...")
-        logging.debug("Calculated")
-        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.mode), "Processed",
+        log_fun("Calculated")
+
+        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.neighborhood_mode), "Processed",
                           len(self.authors.keys()))
-        if safe_save:
-            try:
-                file = open(self.mode.short() + "_" + metrics.get_name(), 'wb')
-                pickle.dump(data_condition_function, file)
-                file.close()
-            except Exception:
-                pass
         for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
             bar.next()
             d = data[user_id]
             m = modify_data(d, data_condition_function) if save_to_file or save_to_database else []
             self._save_data_to_file(file_writer, i, m)
             if save_to_database:
-                self._save_to_database(self.mode.short() + "_" + metrics.get_name(), user_id, m)
-        self._save_histograms_to_file(str(self.mode.value))
+                self._save_to_database(self.neighborhood_mode.short() + "_" + metrics.get_name(), user_id, m)
+        self._save_histograms_to_file(str(self.neighborhood_mode.value))
         bar.finish()
         log_fun("Saved " + metrics.get_name() + ".")
 
-    def clean(self, mode, metrics):
-        self._databaseEngine.drop_column(mode.short() + "_" + metrics.get_name())
+    def clean(self, neighborhood_mode, metrics):
+        """
+        Drops result column from database.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: Metrics
+            Metrics definition
+        """
+        self._databaseEngine.drop_column(neighborhood_mode.short() + "_" + metrics.get_name())
 
-    def statistics(self, mode, metrics, statistics=None, normalize=False, log_fun=None):
-        logging.info("Statistics %s (%s)" % (metrics.get_name(), mode))
-        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name(), "all")  # "all"
+    def statistics(self, neighborhood_mode, metrics, statistics=None, normalize=False, log_fun=logging.INFO):
+        """
+        Calculated statistics for metrics.
+        :param neighborhood_mode: NeighborhoodMode
+             Neighborhood mode definition
+        :param metrics: Metrics
+            Metrics definition
+        :param statistics: iterable
+            Functions to be calculated (if None default functions set will be used)
+        :param normalize: boolean
+            True - values will be normalized
+        :param log_fun: function
+            Defines logging function.
+        """
+        log_fun("Statistics %s (%s)" % (metrics.get_name(), neighborhood_mode))
+        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(), "all")
 
         if isinstance(data[list(data.keys())[-1]], list):
             data = list(chain(*data.values()))
@@ -146,29 +172,48 @@ class Manager:
             maximum = max(data)
             data = [(d - minimum) / (maximum - minimum) for d in data]
         result = Statistics.calculate(list(data), statistics)
-        Statistics.save('statistics/', mode.short() + "_" + metrics.get_name() + ".txt", result, log_fun=log_fun)
+        Statistics.save('statistics/', neighborhood_mode.short() + "_" + metrics.get_name() + ".txt", result,
+                        log_fun=log_fun)
 
-    def points_2d(self, mode, metrics):
+    def points_2d(self, neighborhood_mode, metrics):
+        """
+        Plots points 2D.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: iterable
+            Two metrics definitions.
+        """
         plt.figure()
-        data_x = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics[0].get_name())
-        data_y = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics[1].get_name())
+        data_x = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics[0].get_name())
+        data_y = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics[1].get_name())
 
         d = dict([(k, [data_x[k], data_y[k]]) for k in data_x])
 
         plt.plot([d[k][0] for k in d.keys()], [d[k][1] for k in d.keys()], '.')
         plt.xlabel('x')
         plt.ylabel('y')
-        plt.xlabel(mode.short() + "_" + metrics[0].get_name())
-        plt.ylabel(mode.short() + "_" + metrics[0].get_name())
+        plt.xlabel(neighborhood_mode.short() + "_" + metrics[0].get_name())
+        plt.ylabel(neighborhood_mode.short() + "_" + metrics[0].get_name())
 
-    def distribution_linear(self, mode, metrics, cut=(-1, -1), n_bins=-1):
+    def distribution_linear(self, neighborhood_mode, metrics, cut=(-1, -1), n_bins=-1):
+        """
+        Plots line chart representing variables distribution.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: iterable
+            Metrics definitions.
+        :param cut: tuple
+            Two floats which defines variables range
+        :param n_bins: int
+            Number of bins
+        """
         plt.figure()
         plt.rc('font', size=10)
         plt.ylabel('Frequency')
         plt.xlabel("Metrics value")
         for m in metrics:
             print(m)
-            data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name())
+            data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
 
             r_1 = min(data.values())
             r_2 = max(data.values())
@@ -179,62 +224,35 @@ class Manager:
             bins = np.arange(start=r_1, stop=r_2 + 2 * step, step=step)
 
             cnt, bins = np.histogram(list(data.values()), bins)
-            plt.plot(bins[:-1], cnt, label=mode.short() + "_" + m.get_name())
+            plt.plot(bins[:-1], cnt, label=neighborhood_mode.short() + "_" + m.get_name())
 
         plt.legend()
 
     # TODO multiple bars
-    def histogram(self, mode, metrics, n_bins, cut=(float("-inf"), float("inf")),
+    def histogram(self, neighborhood_mode, metrics, n_bins, cut=(float("-inf"), float("inf")),
                   half_open=False, integers=True, step=-1, normalize=False):
-        logging.info("Histogram %s (%s)" % (metrics.get_name(), mode))
-        plt.rc('font', size=8)
-        fig, ax = plt.subplots()
+        """
+        Plots data histogram.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: Metrics
+            Metrics definition
+        :param n_bins: int
+            Number of bins
+        :param cut: tuple
+            Two floats which defines variables range
+        :param half_open: boolean
+            True - leaves last bin half-opened
+        :param integers: boolean
+            True - labels are considered as integers
+        :param step: float
+            Alternative for n_bins. Defines step for bins.
+        :param normalize: boolean
+            True - values will be normalized
+        """
 
-        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
-        data = {k: v for k, v in data.items() if cut[0] < v < cut[1]}
-
-        if normalize:
-            minimum = min(data.values())
-            maximum = max(data.values())
-            data = {k: (data[k] - minimum) / (maximum - minimum) for k in data}
-
-        r_1 = min(data.values())
-        r_2 = max(data.values())
-        # r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
-        # r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
-
-        step = (r_2 - r_1) / n_bins if step is -1 else step
-        if integers:
-            step = math.ceil(step)
-        bins = np.arange(start=r_1, stop=r_2 + step, step=step)
-        if half_open:
-            bins = np.append(bins[:-1], [r_2])
-
-        cnt, bins = np.histogram(list(data.values()), bins)
-        if integers:
-            if len(bins) > 1:
-                labels = ["[" + str(int(bins[i])) + ", " + str(int(bins[i + 1])) + ")" for i in range(len(bins) - 2)]
-                if half_open:
-                    labels.append("[" + str(int(bins[-2])) + ", " + str(int(bins[-1])) + ")")
-                else:
-                    labels.append("[" + str(int(bins[-2])) + ", " + str(int(bins[-1])) + "]")
-            else:
-                labels = ["[" + str(bins[-2]) + ", " + str(bins[-1]) + "]"]
-        else:
-            if len(bins) > 1:
-                labels = ["[" + "{:.3f}".format(bins[i], 3) + ", " + "{:.3f}".format(bins[i + 1]) + ")"
-                          for i in range(len(bins) - 2)]
-                if half_open:
-                    labels.append("[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + ")")
-                else:
-                    labels.append("[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + "]")
-            else:
-                labels = ["[" + "{:.3f}".format(bins[-2]) + ", " + "{:.3f}".format(bins[-1]) + "]"]
-
-        x = np.arange(len(labels))  # the label locations
-        width = 0.9  # the width of the bars
-
-        rects1 = ax.bar(x, cnt, width)
+        def format_bin_label(value, i):
+            return str(int(value)) if i else "{:.3f}".format(value)
 
         def autolabel(rects):
             """Attach a text label above each bar in *rects*, displaying its height."""
@@ -246,35 +264,88 @@ class Manager:
                             textcoords="offset points",
                             ha='center', va='bottom')
 
+        plt.rc('font', size=8)
+        fig, ax = plt.subplots()
+
+        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
+        data = {k: v for k, v in data.items() if cut[0] < v < cut[1]}
+
+        if normalize:
+            minimum = min(data.values())
+            maximum = max(data.values())
+            data = {k: (data[k] - minimum) / (maximum - minimum) for k in data}
+
+        r_1 = min(data.values())
+        r_2 = max(data.values())
+
+        step = (r_2 - r_1) / n_bins if step is -1 else step
+        if integers:
+            step = math.ceil(step)
+        bins = np.arange(start=r_1, stop=r_2 + step, step=step)
+        if half_open:
+            bins = np.append(bins[:-1], [r_2])
+
+        cnt, bins = np.histogram(list(data.values()), bins)
+        if len(bins) > 1:
+            labels = ["[" + format_bin_label(bins[i], integers) + ", "
+                      + format_bin_label(bins[i + 1], integers) + ")" for i in range(len(bins) - 2)]
+            last_sign = ")" if half_open else "]"
+            labels.append("[" + format_bin_label(bins[-2], integers) + ", "
+                          + format_bin_label(bins[-1], integers) + last_sign)
+        else:
+            labels = ["[" + str(bins[-2]) + ", " + str(bins[-1]) + "]"]
+
+        x = np.arange(len(labels))  # the label locations
+        width = 0.9  # the width of the bars
+
+        rects1 = ax.bar(x, cnt, width)
+
         plt.ylabel('Frequency')
         plt.xlabel("Metrics value")
         plt.title(metrics.get_name())
         ax.set_xticklabels(bins)
         ax.set_xticklabels(labels)
-        # ax.set_title(mode.short() + "_" + metrics.get_name())
+        # ax.set_title(neighborhood_mode.short() + "_" + metrics.get_name())
         ax.set_xticks(x)
         plt.xticks(rotation=90)
         plt.ylim(0, max(cnt) * 1.1)
         autolabel(rects1)
         fig.tight_layout()
 
-    def show_plots(self):
+    @staticmethod
+    def show_plots():
+        """Displays plots which were prepared"""
         plt.show()
 
-    def correlation(self, mode, metrics, functions, title='correlation', do_abs=True):
+    def correlation(self, neighborhood_mode, metrics, functions, do_abs=True,
+                    log_fun=logging.INFO):
+        """
+        Calculates, saves and displays correlation.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: iterable
+            Metrics definitions
+        :param functions: iterable
+            Functions which should be used in case of dynamic graphs.
+        :param do_abs: boolean
+            True - call abs function on correlation values.
+        :param log_fun: function
+            Defines logging function
+        """
         pd.set_option('display.width', None)
         keys = sorted(self.authors.keys())
         df = pd.DataFrame()
         for m in metrics:
             if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
                 for f in functions:
-                    data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name(), f)
+                    data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name(),
+                                                                       f)
                     x = []
                     for key in keys:
                         x.append(data[key])
                     df[m.get_name() + "_" + f.__name__] = x
             else:
-                data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name())
+                data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
                 x = []
                 for key in keys:
                     x.append(data[key])
@@ -292,7 +363,7 @@ class Manager:
         cb.ax.tick_params(labelsize=10)
         plt.title('Correlation Matrix', fontsize=16)
 
-        c.to_csv(r'output/correlation/' + title + '.txt', index=True, header=True)
+        c.to_csv(r'output/correlation/' + 'correlation' + '.txt', index=True, header=True)
 
         c.style.background_gradient(cmap='Blues')
 
@@ -326,13 +397,30 @@ class Manager:
                         c_rate[row]['very small'].append(column)
 
         for key in c_rate:
-            print(key)
+            log_fun(key)
             for r in c_rate[key]:
-                print("\t", str(r), str(c_rate[key][r]))
+                log_fun("\t", str(r), str(c_rate[key][r]))
 
         plt.show()
 
-    def ranking(self, mode, metrics, functions, title='ranking', table_mode="index"):
+    def table(self, neighborhood_mode, metrics, functions, title='table', table_mode="index"):
+        """
+        Creates table of metrics values for all users.
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: iterable
+            Metrics definitions
+        :param functions: iterable
+            Functions which should be used in case of dynamic graphs.
+        :param title: string
+            File title (ending)
+        :param table_mode: string
+            Defines table values. Included in file title (beelining)
+            'index' - index in table
+            'value' - normal metrics value
+            'name' - user name ordered by index table
+        :return:
+        """
         pd.set_option('display.width', None)
         pd.set_option('display.max_rows', None)
         keys = sorted(self.authors.keys())
@@ -342,7 +430,8 @@ class Manager:
             # logging.INFO("Reading.. " + m.get_name())
             if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
                 for f in functions:
-                    data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name(), f)
+                    data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name(),
+                                                                       f)
                     x = []
                     for key in keys:
                         x.append(data[key])
@@ -350,7 +439,7 @@ class Manager:
                     if table_mode is not "value":
                         df[m.get_name() + "_" + f.__name__] = df[m.get_name() + "_" + f.__name__].rank(ascending=False)
             else:
-                data = self._databaseEngine.get_array_value_column(mode.short() + "_" + m.get_name())
+                data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
                 x = []
                 for key in keys:
                     x.append(data[key])
@@ -363,57 +452,36 @@ class Manager:
             metrics_keys = df.keys()
             authors_rankings = pd.DataFrame()
             for m in metrics_keys:
-                logging.INFO("Checking ranking for.. " + m)
+                logging.INFO("Checking table for.. " + m)
                 if m != 'Name':
                     authors_rankings[m] = list(df.sort_values(m, ascending=False)['Name'])
             result = authors_rankings
 
-        if not os.path.exists('output/ranking'):
-            os.mkdir('output/ranking')
+        if not os.path.exists('output/table'):
+            os.mkdir('output/table')
 
-        result.to_csv(r'output/ranking/' + table_mode + "_" + title + '.txt', index=True, header=True)
+        result.to_csv(r'output/table/' + table_mode + "_" + title + '.txt', index=True, header=True)
 
-    def display_between_range(self, mode, metrics, min, max):
-        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
-        for d in data:
-            if min < data[d] < max:
-                print(d, data[d])
-
-    def process_loaded_data(self, metrics, predict=False, calculate_histogram=False,
-                            x_scale=None, size_scale=None, data_condition_function=None, data_functions=None):
+    def display_between_range(self, neighborhood_mode, metrics, minimum, maximum, log_fun=logging.INFO):
         """
-        Load data from database - only if metrics was calculated before. Result can be used in prediction or histogram.
-        :param metrics: MetricsType
-            Calculate function from given class is called
-        :param predict: bool
-            True - predict time series
-        :param calculate_histogram: bool
-            True - calculate and save data as a histogram
-        :param x_scale: array (float)
-            Defines standard classes for the histogram
-        :param size_scale: array (int)
-            Defines size classes for the histogram
-        :param data_condition_function: function
-            Condition function defines which values should be removed to e.g. remove None values
-        :param data_functions: array (function)
-            DataProcessing function defines how data should be modified in order to aggregate them e.g. minimum
+        Displays users for whom metrics value is between range (minimum, maximum).
+        :param neighborhood_mode: NeighborhoodMode
+            Neighborhood mode definition
+        :param metrics: Metrics
+            Metrics definition
+        :param minimum: int
+        :param maximum: int
+        :param log_fun: function
+            Defines logging function
         """
-        self._initialize_histogram_managers(calculate_histogram, data_functions, metrics, x_scale, size_scale)
-        bar = ProgressBar("Processing %s" % metrics.value, "Calculated", len(self.authors.keys()))
-        for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
-            bar.next()
-            data = self._databaseEngine.get_array_value_column_for_user(metrics.get_name(), user_id, None)
-            if predict:
-                self.predict(data, user_id)
-            data_modified = modify_data(data, data_condition_function) if calculate_histogram else []
-            if calculate_histogram:
-                self._add_data_to_histograms(self.static_neighborhood_size[i], data_modified)
-        for histogram in self.histogram_managers:
-            histogram.save('output/' + str(self.mode.value) + "/")
-        bar.finish()
+        if metrics is not None:
+            data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
+            for item in sorted(data.items(), key=lambda k: (k[1], k[0]), reverse=True):
+                if minimum < item[1] < maximum:
+                    log_fun(str(self.authors[item[0]]) + " " + str(item[1]))
 
-    def select_users(self, mode, metrics, values_start=None, values_stop=None, percent=None):
-        data = self._databaseEngine.get_array_value_column(mode.short() + "_" + metrics.get_name())
+    def select_users(self, neighborhood_mode, metrics, values_start=None, values_stop=None, percent=None):
+        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
         if percent is None:
             return [k for k in data if values_start <= data[k] <= values_stop]
         else:
@@ -430,6 +498,8 @@ class Manager:
             Parameters included in clustering.
          :param users_selection:
             Cluster only some selected users.
+        :param log_fun: function
+            Defines logging function
         """
         log_fun('Clustering: k-means, n_clusters= %s...' % str(n_clusters) + '\n')
         data, _data = self._prepare_clustering_data(parameters, users_selection)
@@ -508,13 +578,13 @@ class Manager:
         :param day_start: datetime.datetime
         :param day_end: datetime.datetime
         """
-        if self.mode.do_read_comments_to_posts:
+        if self.neighborhood_mode.do_read_comments_to_posts:
             self._comments_to_posts.append_data(day_start, day_end)
-        if self.mode.do_read_comments_to_comments:
+        if self.neighborhood_mode.do_read_comments_to_comments:
             self._comments_to_comments.append_data(day_start, day_end)
-        if self.mode.do_read_comments_to_posts_from_others:
+        if self.neighborhood_mode.do_read_comments_to_posts_from_others:
             self._comments_to_posts_from_others.append_data(day_start, day_end)
-        if self.mode.do_read_comments_to_comments_from_others:
+        if self.neighborhood_mode.do_read_comments_to_comments_from_others:
             self._comments_to_comments_from_others.append_data(day_start, day_end)
 
     def _set_comments_to_add(self):
@@ -522,18 +592,18 @@ class Manager:
         Sets variable, which contains comments included in model.
         """
         self.comments_to_add = []
-        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_POSTS:
             self.comments_to_add.append(self._comments_to_posts.get_data())
-        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_posts_from_others.get_data())
-        if self.mode is NeighborhoodMode.COMMENTS_TO_COMMENTS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_COMMENTS:
             self.comments_to_add.append(self._comments_to_comments.get_data())
-        if self.mode is NeighborhoodMode.COMMENTS_TO_COMMENTS_FROM_OTHERS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_COMMENTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_comments_from_others.get_data())
-        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS:
             self.comments_to_add.append(self._comments_to_posts.get_data())
             self.comments_to_add.append(self._comments_to_comments.get_data())
-        if self.mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS:
+        if self.neighborhood_mode is NeighborhoodMode.COMMENTS_TO_POSTS_AND_COMMENTS_FROM_OTHERS:
             self.comments_to_add.append(self._comments_to_posts_from_others.get_data())
             self.comments_to_add.append(self._comments_to_comments_from_others.get_data())
 
@@ -607,18 +677,18 @@ class Manager:
             graph = SocialNetworkGraph()
             i += step
 
-    def check_graphs(self, mode):
+    def check_graphs(self, neighborhood_mode):
         if self.static_graph is None or self.dynamic_graphs is None:
-            self._create_graphs(mode)
+            self._create_graphs(neighborhood_mode)
 
-    def _create_graphs(self, mode):
+    def _create_graphs(self, neighborhood_mode):
         """
-        Creates graphs corresponding to the selected mode.
-        :param mode: NeighborhoodMode
-            Defines model mode (which comments should me included)
+        Creates graphs corresponding to the selected neighborhood_mode.
+        :param neighborhood_mode: NeighborhoodMode
+            Defines model neighborhood_mode (which comments should me included)
         """
-        self.mode = mode
-        graphs_file_name = 'graphs' + "/" + self.mode.name \
+        self.neighborhood_mode = neighborhood_mode
+        graphs_file_name = 'graphs' + "/" + self.neighborhood_mode.name \
                            + "_" + str(self._number_of_days_in_interval) \
                            + "_" + str(self._number_of_new_days_in_interval)
         Path('graphs').mkdir(parents=True, exist_ok=True)
@@ -654,13 +724,13 @@ class Manager:
         """
         data = {}
         _data = {}
-        print(parameters, "tutu")
+
         for parameter in parameters:
-            mode = parameter[0]
+            neighborhood_mode = parameter[0]
             metrics = parameter[1]
             weight = parameter[2]
             f = None if len(parameter) == 3 else parameter[3]
-            name = mode.short() + "_" + metrics.get_name()
+            name = neighborhood_mode.short() + "_" + metrics.get_name()
             r = self._databaseEngine.get_array_value_column(name, f)
             users_selection = self.authors.keys() if not users_selection else users_selection
             data[name] = [r[k] for k in sorted(r.keys()) if k in users_selection]
@@ -684,6 +754,8 @@ class Manager:
         :param centers: array
             Centers of clusters
         """
+        ranges = defaultdict(list)
+        p_values = defaultdict(list)
         save = defaultdict(list)
         file_writer = FileWriter()
         file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
@@ -698,11 +770,10 @@ class Manager:
             users_ids = np.array(sorted(self.authors.keys()))[indexes] if not users_selection \
                 else np.array(sorted(users_selection))[indexes]
 
-            if log_fun is not None:
-                log_fun('Cluster: %s' % cluster)
-                log_fun(
-                    '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
-                log_fun('Parameters:')
+            log_fun('Cluster: %s' % cluster)
+            log_fun(
+                '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
+            log_fun('Parameters:')
 
             save['stats'].extend(['min', 'max', 'mean', 'stdev'])
             empty_stats = ['' for _ in range(3)]
@@ -713,16 +784,16 @@ class Manager:
 
             for i, parameter_name in enumerate(parameters_names):
                 values = data[indexes, i][0]
-                std = stdev(values) if len(values) > 1 else 0
-                save[parameter_name].extend([round(min(values), 3), round(max(values), 3),
-                                             round(mean(values), 3), round(std, 3)])
-                if log_fun is not None:
-                    log_fun("\t %s: min= %s, max= %s, mean= %s, stdev= %s" %
-                              (parameter_name, round(min(values), 3), round(max(values), 3),
-                               round(mean(values), 3), round(stdev(values) if len(values) > 1 else values[0], 3)))
+                r = [round(min(values), 3),
+                     round(max(values), 3),
+                     round(mean(values), 3),
+                     round(stdev(values) if len(values) > 1 else values[0], 3)]
+                ranges[parameter_name].append([r[0], r[1]])
+                p_values[parameter_name].append(values)
+                save[parameter_name].extend(r)
+                log_fun("\t %s: min= %s, max= %s, mean= %s, stdev= %s" % (parameter_name, r[0], r[1], r[2], r[3]))
 
-            if log_fun is not None:
-                log_fun("Sample users:")
+            log_fun("Sample users:")
             s = []
             len_50 = 0
             len_250 = 0
@@ -735,8 +806,7 @@ class Manager:
                     parameters = [
                         self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
                         for parameter_name in parameters_names]
-                    if log_fun is not None:
-                        log_fun("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
+                    log_fun("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
                     len_50 += 1
                     len_250 += 1
                     len_500 += 1
@@ -750,8 +820,7 @@ class Manager:
                     len_1000 += 1
                 elif i in interesting_users_1000:
                     len_1000 += 1
-            if log_fun is not None:
-                log_fun('\n')
+            log_fun('\n')
             save['sample'].extend([s, *empty_stats])
             save['first 50'].extend([len_50, len_50 / len(users_ids) * 100, *empty_stats[:-1]])
             save['first 250'].extend([len_250, len_250 / len(users_ids) * 100, *empty_stats[:-1]])
@@ -767,6 +836,64 @@ class Manager:
         file_writer.write_split_row_to_file(['first 250', save['first 250']])
         file_writer.write_split_row_to_file(['first 500', save['first 500']])
         file_writer.write_split_row_to_file(['first 1000', save['first 1000']])
+
+        Manager.plot_overlapping(parameters_names, ranges, False)
+        Manager.plot_overlapping(parameters_names, p_values, True)
+        plt.show()
+
+    @staticmethod
+    def plot_overlapping(parameters_names, arr, points=False):
+        fig, axs = plt.subplots(len(parameters_names))
+        plots = None
+        for i, key in enumerate(parameters_names):
+            plots = Manager.plot_overlapping_ranges_by_points(arr[key], axs[i]) if points \
+                else Manager.plot_overlapping_ranges(arr[key], axs[i])
+            axs[i].set_title(key, fontsize=6)
+        fig.legend(plots, labels=['Cluster ' + str(i) for i in range(len(parameters_names))], loc="center right",
+                   bbox_to_anchor=(0.99, 0.5), borderaxespad=0.1, prop={'size': 6})
+        fig.tight_layout()
+        plt.subplots_adjust(right=0.85)
+
+    @staticmethod
+    def plot_overlapping_ranges_by_points(points, axs):
+        axs.set_ylim([-1, len(points) + 1])
+        axs.yaxis.set_visible(False)
+
+        for item in axs.get_xticklabels():
+            item.set_fontsize(6)
+
+        x = points
+        y = [i for i in range(len(points))]
+
+        plots = []
+        for i in range(len(points)):
+            plot = axs.plot(x[i], [y[i] for _ in range(len(x[i]))], 'o')
+            for p in plot:
+                p.set_alpha(0.5)
+            plots.append(plot)
+
+        return plots
+
+    @staticmethod
+    def plot_overlapping_ranges(ranges, axs):
+        axs.yaxis.set_visible(False)
+
+        for item in axs.get_xticklabels():
+            item.set_fontsize(6)
+
+        width = [(r[1] - r[0]) for r in ranges]
+        center = [r[0] + (r[1] - r[0]) / 2 for r in ranges]
+        height = [1 for _ in range(len(ranges))]
+        bottom = [i for i in range(len(ranges))]
+
+        bars = []
+        for i in range(len(ranges)):
+            bar = axs.bar(center[i], height[i], width=width[i], bottom=bottom[i])
+            for b in bar:
+                b.set_alpha(0.5)
+            bars.append(bar)
+
+        return bars
 
     def _save_data_to_file(self, file_writer, author_id, data):
         """
@@ -828,7 +955,7 @@ class Manager:
         if save_to_file:
             file_name = calculated_value.get_name() + ".txt"
             file_writer = FileWriter()
-            file_writer.set_all(self.mode.value, file_name, self._get_graphs_labels(3))
+            file_writer.set_all(self.neighborhood_mode.value, file_name, self._get_graphs_labels(3))
             return file_writer
         return None
 
@@ -913,7 +1040,7 @@ class Manager:
         """
         Saves histogram data to file.
         :param mode_name: str
-            Mode name - folder
+            NeighborhoodMode name - folder
         """
         for histogram in self.histogram_managers:
             histogram.save('output/' + mode_name + "/")
