@@ -5,17 +5,19 @@ import os
 import pickle
 import warnings
 from collections import defaultdict
-from itertools import chain
 from pathlib import Path
 import numpy as np
-from matplotlib.transforms import blended_transform_factory
+from scipy.cluster.hierarchy import dendrogram
+
 from statsmodels.tsa.statespace.tools import diff
-from sklearn.cluster import KMeans
-from statistics import mean, stdev
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from statistics import mean, stdev, variance
+from statsmodels.tsa.stattools import adfuller
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from Metrics.MetricsProcessing.Statistics import Statistics
+from DataProcessing.ResultsDisplay import histogram
+from Metrics.Metrics import Metrics
 from Metrics.MetricsProcessing.Histogram import Histogram
 from Metrics.MetricsProcessing.Prediction import Prediction
 from Metrics.config import degree_in_static
@@ -97,30 +99,25 @@ class Manager:
             self._days_count = self._number_of_days_in_interval * 5
         self.authors = self._get_authors_parameter("name")
 
-    def calculate(self, metrics, save_to_file=True, save_to_database=True,
-                  data_condition_function=None, do_users_selection=None, log_fun=logging.INFO):
+    def calculate(self, metrics, condition_fun=None, log_fun=logging.INFO):
         """
-        Calculated metrics for current neighborhood_mode (self.neighborhood_mode).
+        Calculated metrics for current neighborhood_mode (self.neighborhood_mode) and saves result to database.
         :param metrics: Metrics
             Metrics definition
-        :param save_to_file: boolean
-            True - saves results to file
-        :param save_to_database:
-            True - saves results to database
-        :param data_condition_function: function
+        :param condition_fun: function
             Defines values that will be accepted (unaccepted will be replaced using Manager.modify_data)
-        :param do_users_selection:
-            True - defines if only 10% of users with highest degree should be chosen.
         :param log_fun:
             Defines logging function.
         """
-        file_writer = self._initialize_file_writer(save_to_file, metrics)
-
         log_fun("Calculating %s (%s)" % (metrics.get_name(), self.neighborhood_mode))
         first_activity_dates = self._get_first_activity_dates()
-        users_selection = self.select_users(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static,
-                                            percent=0.1) if do_users_selection else None
-        data = metrics.calculate(self.authors.keys(), first_activity_dates, users_selection=users_selection)
+        if metrics.value in [Metrics.NEIGHBORHOOD_QUALITY]:
+            users_selection = self.select_users(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                                                degree_in_static,
+                                                percent=0.1)
+            data = metrics.calculate(self.authors.keys(), first_activity_dates, users_selection=users_selection)
+        else:
+            data = metrics.calculate(self.authors.keys(), first_activity_dates)
         log_fun("Calculated " + metrics.get_name() + ". Saving...")
         log_fun("Calculated")
 
@@ -129,10 +126,8 @@ class Manager:
         for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
             bar.next()
             d = data[user_id]
-            m = modify_data(d, data_condition_function) if save_to_file or save_to_database else []
-            self._save_data_to_file(file_writer, i, m)
-            if save_to_database:
-                self._save_to_database(self.neighborhood_mode.short() + "_" + metrics.get_name(), user_id, m)
+            m = modify_data(d, condition_fun)
+            self._save_to_database(self.neighborhood_mode.short() + "_" + metrics.get_name(), user_id, m)
         self._save_histograms_to_file(str(self.neighborhood_mode.value))
         bar.finish()
         log_fun("Saved " + metrics.get_name() + ".")
@@ -147,178 +142,28 @@ class Manager:
         """
         self._databaseEngine.drop_column(neighborhood_mode.short() + "_" + metrics.get_name())
 
-    def statistics(self, neighborhood_mode, metrics, statistics=None, normalize=False, log_fun=logging.INFO):
+    def get_data(self, neighborhood_mode, metrics, cut_down=float("-inf"), cut_up=float("inf"), users_selection=None):
         """
-        Calculated statistics for metrics.
-        :param neighborhood_mode: NeighborhoodMode
-             Neighborhood mode definition
-        :param metrics: Metrics
-            Metrics definition
-        :param statistics: iterable
-            Functions to be calculated (if None default functions set will be used)
-        :param normalize: boolean
-            True - values will be normalized
-        :param log_fun: function
-            Defines logging function.
-        """
-        log_fun("Statistics %s (%s)" % (metrics.get_name(), neighborhood_mode))
-        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(), "all")
-
-        if isinstance(data[list(data.keys())[-1]], list):
-            data = list(chain(*data.values()))
-
-        if normalize:
-            minimum = min(data)
-            maximum = max(data)
-            data = [(d - minimum) / (maximum - minimum) for d in data]
-        result = Statistics.calculate(list(data), statistics)
-        Statistics.save('statistics/', neighborhood_mode.short() + "_" + metrics.get_name() + ".txt", result,
-                        log_fun=log_fun)
-
-    def points_2d(self, neighborhood_mode, metrics):
-        """
-        Plots points 2D.
-        :param neighborhood_mode: NeighborhoodMode
-            Neighborhood mode definition
-        :param metrics: iterable
-            Two metrics definitions.
-        """
-        plt.figure()
-        data_x = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics[0].get_name())
-        data_y = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics[1].get_name())
-
-        d = dict([(k, [data_x[k], data_y[k]]) for k in data_x])
-
-        plt.plot([d[k][0] for k in d.keys()], [d[k][1] for k in d.keys()], '.')
-        plt.xlabel('x')
-        plt.ylabel('y')
-        plt.xlabel(neighborhood_mode.short() + "_" + metrics[0].get_name())
-        plt.ylabel(neighborhood_mode.short() + "_" + metrics[0].get_name())
-
-    def distribution_linear(self, neighborhood_mode, metrics, cut=(-1, -1), n_bins=-1):
-        """
-        Plots line chart representing variables distribution.
-        :param neighborhood_mode: NeighborhoodMode
-            Neighborhood mode definition
-        :param metrics: iterable
-            Metrics definitions.
-        :param cut: tuple
-            Two floats which defines variables range
-        :param n_bins: int
-            Number of bins
-        """
-        plt.figure()
-        plt.rc('font', size=10)
-        plt.ylabel('Frequency')
-        plt.xlabel("Metrics value")
-        for m in metrics:
-            print(m)
-            data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
-
-            r_1 = min(data.values())
-            r_2 = max(data.values())
-            r_1 = max(r_1, cut[0]) if cut[0] != -1 else r_1
-            r_2 = min(r_2, cut[1]) if cut[1] != -1 else r_2
-
-            step = (r_2 - r_1) / n_bins if n_bins != -1 else 1
-            bins = np.arange(start=r_1, stop=r_2 + 2 * step, step=step)
-
-            cnt, bins = np.histogram(list(data.values()), bins)
-            plt.plot(bins[:-1], cnt, label=neighborhood_mode.short() + "_" + m.get_name())
-
-        plt.legend()
-
-    # TODO multiple bars
-    def histogram(self, neighborhood_mode, metrics, n_bins, cut=(float("-inf"), float("inf")),
-                  half_open=False, integers=True, step=-1, normalize=False):
-        """
-        Plots data histogram.
-        :param neighborhood_mode: NeighborhoodMode
+         :param neighborhood_mode: NeighborhoodMode
             Neighborhood mode definition
         :param metrics: Metrics
             Metrics definition
-        :param n_bins: int
-            Number of bins
-        :param cut: tuple
-            Two floats which defines variables range
-        :param half_open: boolean
-            True - leaves last bin half-opened
-        :param integers: boolean
-            True - labels are considered as integers
-        :param step: float
-            Alternative for n_bins. Defines step for bins.
-        :param normalize: boolean
-            True - values will be normalized
+        :param cut_down:
+            Minimum accepted value
+        :param cut_up:
+            Maximum accepted value
+        :param users_selection:
+            Accepted users ids
+        :return: dict
+            Dictionary of ids and metrics values.
         """
-
-        def format_bin_label(value, i):
-            return str(int(value)) if i else "{:.3f}".format(value)
-
-        def autolabel(rects):
-            """Attach a text label above each bar in *rects*, displaying its height."""
-            for rect in rects:
-                height = rect.get_height()
-                ax.annotate('{}'.format(height),
-                            xy=(rect.get_x() + rect.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
-                            textcoords="offset points",
-                            ha='center', va='bottom')
-
-        plt.rc('font', size=8)
-        fig, ax = plt.subplots()
-
+        # Get data
         data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
-        data = {k: v for k, v in data.items() if cut[0] < v < cut[1]}
+        users_selection = data.keys() if users_selection is None else users_selection
+        # Cut data
+        return {k: v for k, v in data.items() if cut_down < v < cut_up and k in users_selection}
 
-        if normalize:
-            minimum = min(data.values())
-            maximum = max(data.values())
-            data = {k: (data[k] - minimum) / (maximum - minimum) for k in data}
-
-        r_1 = min(data.values())
-        r_2 = max(data.values())
-
-        step = (r_2 - r_1) / n_bins if step is -1 else step
-        if integers:
-            step = math.ceil(step)
-        bins = np.arange(start=r_1, stop=r_2 + step, step=step)
-        if half_open:
-            bins = np.append(bins[:-1], [r_2])
-
-        cnt, bins = np.histogram(list(data.values()), bins)
-        if len(bins) > 1:
-            labels = ["[" + format_bin_label(bins[i], integers) + ", "
-                      + format_bin_label(bins[i + 1], integers) + ")" for i in range(len(bins) - 2)]
-            last_sign = ")" if half_open else "]"
-            labels.append("[" + format_bin_label(bins[-2], integers) + ", "
-                          + format_bin_label(bins[-1], integers) + last_sign)
-        else:
-            labels = ["[" + str(bins[-2]) + ", " + str(bins[-1]) + "]"]
-
-        x = np.arange(len(labels))  # the label locations
-        width = 0.9  # the width of the bars
-
-        rects1 = ax.bar(x, cnt, width)
-
-        plt.ylabel('Frequency')
-        plt.xlabel("Metrics value")
-        plt.title(metrics.get_name())
-        ax.set_xticklabels(bins)
-        ax.set_xticklabels(labels)
-        # ax.set_title(neighborhood_mode.short() + "_" + metrics.get_name())
-        ax.set_xticks(x)
-        plt.xticks(rotation=90)
-        plt.ylim(0, max(cnt) * 1.1)
-        autolabel(rects1)
-        fig.tight_layout()
-
-    @staticmethod
-    def show_plots():
-        """Displays plots which were prepared"""
-        plt.show()
-
-    def correlation(self, neighborhood_mode, metrics, functions, do_abs=True,
-                    log_fun=logging.INFO):
+    def correlation(self, neighborhood_mode, metrics, functions, do_abs=True, log_fun=logging.INFO):
         """
         Calculates, saves and displays correlation.
         :param neighborhood_mode: NeighborhoodMode
@@ -338,8 +183,8 @@ class Manager:
         for m in metrics:
             if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
                 for f in functions:
-                    data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name(),
-                                                                       f)
+                    data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_"
+                                                                       + m.get_name(), f)
                     x = []
                     for key in keys:
                         x.append(data[key])
@@ -482,11 +327,11 @@ class Manager:
 
     def select_users(self, neighborhood_mode, metrics, values_start=None, values_stop=None, percent=None):
         data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
+        sorted_keys = [item[0] for item in sorted(data.items(), key=lambda k: (k[1], k[0]))]
+        sorted_keys.reverse()
         if percent is None:
-            return [k for k in data if values_start <= data[k] <= values_stop]
+            return [k for k in sorted_keys if values_start <= data[k] <= values_stop]
         else:
-            sorted_keys = [item[1] for item in sorted(data.items(), key=lambda k: (k[1], k[0]))]
-            sorted_keys.reverse()
             return sorted_keys[0:math.ceil(len(sorted_keys) * percent)]
 
     def k_means(self, n_clusters, parameters, users_selection=None, log_fun=logging.info):
@@ -508,7 +353,42 @@ class Manager:
         k_means.fit(data)
         log_fun('\tData fitted.')
         self._save_clusters([p[0].short() + "_" + p[1].get_name() for p in parameters],
-                            k_means.predict(data), k_means.cluster_centers_, _data, users_selection, log_fun=log_fun)
+                            k_means.labels_, n_clusters, _data, users_selection, log_fun=log_fun)
+        log_fun('Clustering finished. Result saved in output folder.')
+
+    def plot_dendrogram(self, model, **kwargs):
+        # Create linkage matrix and then plot the dendrogram
+
+        # create the counts of samples under each node
+        counts = np.zeros(model.children_.shape[0])
+        n_samples = len(model.labels_)
+        for i, merge in enumerate(model.children_):
+            current_count = 0
+            for child_idx in merge:
+                if child_idx < n_samples:
+                    current_count += 1  # leaf node
+                else:
+                    current_count += counts[child_idx - n_samples]
+            counts[i] = current_count
+
+        linkage_matrix = np.column_stack([model.children_, model.distances_,
+                                          counts]).astype(float)
+
+        # Plot the corresponding dendrogram
+        dendrogram(linkage_matrix, **kwargs)
+
+    def agglomerative_clustering(self, n_clusters, parameters, users_selection=None, log_fun=logging.info):
+        log_fun('Clustering: agglomerative clustering...' + '\n')
+        data, _data = self._prepare_clustering_data(parameters, users_selection)
+        clustering = AgglomerativeClustering(n_clusters=n_clusters).fit(data)
+
+        print('done')
+        # self.plot_dendrogram(clustering, truncate_mode='level', p=3)
+        # plt.xlabel("Number of points in node (or index of point if no parenthesis).")
+        # plt.show()
+
+        self._save_clusters([p[0].short() + "_" + p[1].get_name() for p in parameters],
+                            clustering.labels_, n_clusters, _data, users_selection, log_fun=log_fun)
         log_fun('Clustering finished. Result saved in output folder.')
 
     def predict(self, data, author_id):
@@ -537,6 +417,89 @@ class Manager:
             title_data.append(result[0] + str(parameters_version))
         if self.authors[author_id] in interesting_ids:
             Prediction.plot("Prediction for " + self.authors[author_id], plot_data, title_data)
+
+    @staticmethod
+    def calculate_trend(data):
+        y = np.array(data)
+        n = np.size(data)
+        x = np.array([i for i in range(len(data))])
+        m_x, m_y = np.mean(x), np.mean(y)
+        ss_xy = np.sum(y * x) - n * m_y * m_x
+        ss_xx = np.sum(x * x) - n * m_x * m_x
+        a = ss_xy / ss_xx
+        b = m_y - a * m_x
+        return b, a
+
+    def stability(self, neighborhood_mode, metrics, users_selection=None):
+        pd.set_option('display.width', None)
+        pd.set_option('display.max_rows', None)
+        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(), 'all')
+        keys = sorted(data.keys(), reverse=True) if not users_selection else users_selection
+
+        stability = pd.DataFrame()
+        stability['id'] = keys
+        stability['len'] = [len(data[key]) for key in keys]
+        stability['mean'] = [mean(data[key]) for key in keys]
+        stability['variance'] = [variance(data[key]) if len(data[key]) > 1 else np.nan for key in keys]
+        stability['std'] = [np.std(data[key]) if len(data[key]) > 1 else np.nan for key in keys]
+
+        data_moving_average = defaultdict(list)
+
+        N = 50
+        for key in keys:
+            data_moving_average[key] = list(pd.Series(data[key]).rolling(window=N).mean().iloc[N - 1:].values)
+
+        stability['trend'] = [Manager.calculate_trend(data[key])[1] for key in keys]
+
+        trend_dic = {}
+        c = 0
+        for key in keys:
+            trend_arr = []
+            M = math.floor(N / 2)
+            k = math.ceil(len(data[key]) / M)
+            if c < 5:
+                fig, ax = plt.subplots()
+                ax.plot(data[key])
+                b, a = Manager.calculate_trend(data[key])
+                ax.plot([b + a * t_i for t_i in range(len(data[key]))], color='orange')
+                fig.suptitle(self.authors[key])
+            for i in range(k):
+                start = i * M
+                end = (i + 1) * M if (i + 1) * M < len(data[key]) else len(data[key])
+                b, a = Manager.calculate_trend(data[key][start:end])
+                if not math.isnan(a):
+                    trend_arr.append(a)
+                if c < 5:
+                    ax.plot([x for x in range(start, end)], [b + a * t_i for t_i in range(len(data[key][start:end]))],
+                            color='red')
+            trend_dic[key] = trend_arr
+            c += 1
+
+        stability['trend_min'] = [min(trend_dic[key]) for key in keys]
+        stability['trend_max'] = [max(trend_dic[key]) for key in keys]
+        stability['trend_mean'] = [mean(trend_dic[key]) for key in keys]
+        stability['trend_sum'] = [sum(trend_dic[key]) for key in keys]
+
+        adf = []
+        # for key in keys:
+        #     try:
+        #         adf.append(adfuller(data[key])[0])
+        #     except Exception as e:
+        #         adf.append(np.nan)
+        #         logging.WARNING(str(e))
+        # stability['adf'] = adf
+
+
+        FileWriter.write_data_frame_to_file(FileWriter.STABILITY, metrics.get_name(), stability)
+
+        histogram("Stability std", {key: stability.set_index('id')['std'][key] for key in keys}, n_bins=15,
+                  integers=False)
+        histogram("Stability trend", {key: stability.set_index('id')['trend'][key] for key in keys}, n_bins=15,
+                  integers=False)
+        histogram("Stability trend max", {key: stability.set_index('id')['trend_max'][key] for key in keys}, n_bins=15,
+                  integers=False)
+
+        plt.show()
 
     def _get_dates_range(self):
         """
@@ -744,35 +707,33 @@ class Manager:
         def __init__(self):
             pass
 
-    def _save_clusters(self, parameters_names, classes, centers, data, users_selection=None, log_fun=logging.debug):
+    def _save_clusters(self, parameters_names, classes, n_clusters, data, users_selection=None, log_fun=logging.debug):
         """
         Displays results of clustering.
         :param parameters_names: array (string)
             Parameters included in clustering.
         :param classes: array
             Classes created
-        :param centers: array
-            Centers of clusters
+        :param n_clusters: int
+            Number of clusters
         """
         ranges = defaultdict(list)
         p_values = defaultdict(list)
         save = defaultdict(list)
-        file_writer = FileWriter()
-        file_writer.set_all('clustering', 'cluster' + str(len(centers)) + ".txt")
 
         interesting_users_50 = self._databaseEngine.get_interesting_users(50)
         interesting_users_250 = self._databaseEngine.get_interesting_users(250)
         interesting_users_500 = self._databaseEngine.get_interesting_users(500)
         interesting_users_1000 = self._databaseEngine.get_interesting_users(1000)
 
-        for cluster in range(len(centers)):
+        for cluster in range(n_clusters):
             indexes = np.where(classes == cluster)
             users_ids = np.array(sorted(self.authors.keys()))[indexes] if not users_selection \
                 else np.array(sorted(users_selection))[indexes]
 
             log_fun('Cluster: %s' % cluster)
-            log_fun(
-                '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in centers[cluster]], len(users_ids)))
+            # log_fun(
+            #     '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in n_clusters[cluster]], len(users_ids)))
             log_fun('Parameters:')
 
             save['stats'].extend(['min', 'max', 'mean', 'stdev'])
@@ -826,19 +787,21 @@ class Manager:
             save['first 250'].extend([len_250, len_250 / len(users_ids) * 100, *empty_stats[:-1]])
             save['first 500'].extend([len_500, len_500 / len(users_ids) * 100, *empty_stats[:-1]])
             save['first 1000'].extend([len_1000, len_1000 / len(users_ids) * 100, *empty_stats[:-1]])
-        file_writer.write_split_row_to_file(['cluster', save['cluster']])
-        file_writer.write_split_row_to_file(['size', save['size']])
-        file_writer.write_split_row_to_file(['stats', save['stats']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['cluster', save['cluster']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['size', save['size']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['stats', save['stats']])
         for parameter_name in parameters_names:
-            file_writer.write_split_row_to_file([parameter_name, save[parameter_name]])
-        file_writer.write_split_row_to_file(['sample', save['sample']])
-        file_writer.write_split_row_to_file(['first 50', save['first 50']])
-        file_writer.write_split_row_to_file(['first 250', save['first 250']])
-        file_writer.write_split_row_to_file(['first 500', save['first 500']])
-        file_writer.write_split_row_to_file(['first 1000', save['first 1000']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), [parameter_name,
+                                                                                             save[parameter_name]])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['sample', save['sample']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 50', save['first 50']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 250', save['first 250']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 500', save['first 500']])
+        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 1000', save['first 1000']])
 
         Manager.plot_overlapping(parameters_names, ranges, False)
         Manager.plot_overlapping(parameters_names, p_values, True)
+
         plt.show()
 
     @staticmethod
@@ -856,14 +819,14 @@ class Manager:
 
     @staticmethod
     def plot_overlapping_ranges_by_points(points, axs):
-        axs.set_ylim([-1, len(points) + 1])
+        axs.set_ylim([-2, 2 * len(points) + 2])
         axs.yaxis.set_visible(False)
 
         for item in axs.get_xticklabels():
             item.set_fontsize(6)
 
         x = points
-        y = [i for i in range(len(points))]
+        y = [i * 2 for i in range(len(points))]
 
         plots = []
         for i in range(len(points)):
@@ -941,23 +904,6 @@ class Manager:
             self._calculate_and_get_authors_static_neighborhood_size()
             for data_function in data_functions:
                 self.histogram_managers.append(self.HistogramManager(data_function, value, x_scale, size_scale))
-
-    def _initialize_file_writer(self, save_to_file, calculated_value):
-        """
-        Initializes FileWriter if required.
-        :param save_to_file: bool
-            True - initialization is required
-        :param calculated_value: MetricsType
-            Defines filename
-        :return: FileWriter
-            Initialized FileWriter if initialization is required otherwise None
-        """
-        if save_to_file:
-            file_name = calculated_value.get_name() + ".txt"
-            file_writer = FileWriter()
-            file_writer.set_all(self.neighborhood_mode.value, file_name, self._get_graphs_labels(3))
-            return file_writer
-        return None
 
     def _get_authors_parameter(self, parameter):
         """

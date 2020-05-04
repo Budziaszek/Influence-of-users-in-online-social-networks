@@ -20,16 +20,16 @@ class Metrics:
     BETWEENNESS_CENTRALITY = "betweenness_centrality"
     LOCAL_CENTRALITY = "local_centrality"
 
-    # NEIGHBOTHOOD
+    # NEIGHBORHOOD
     NEIGHBORHOOD_DENSITY = "neighborhood_density"
     RECIPROCITY = "reciprocity"
     JACCARD_INDEX_NEIGHBORS = "jaccard_index"
     NEIGHBORHOOD_QUALITY = "neighborhood_quality"
 
     # STABILITY
-    DIVIDE_NEIGHBORS = "divide_neighbors"
-    NEIGHBORS_COUNT_DIFFERENCE = "neighbors_count_difference"
-    NEW_NEIGHBORS = "new_neighbors"
+    # DEGREE_BETWEEN_INTERVALS_DIFFERENCE = "neighbors_count_difference"
+    # DIVIDE_NEIGHBORS = "divide_neighbors"
+    # NEW_NEIGHBORS = "new_neighbors"
 
     METRICS_LIST = [
         DEGREE,
@@ -47,10 +47,6 @@ class Metrics:
         RECIPROCITY,
         JACCARD_INDEX_NEIGHBORS,
         NEIGHBORHOOD_QUALITY,
-
-        DIVIDE_NEIGHBORS,
-        NEIGHBORS_COUNT_DIFFERENCE,
-        NEW_NEIGHBORS,
     ]
 
     # TODO PageRank
@@ -106,19 +102,23 @@ class Metrics:
         if self.value == self.CLOSENESS_CENTRALITY:
             return connection_type.closeness_centrality(graph)
         if self.value == self.BETWEENNESS_CENTRALITY:
-            return connection_type.betweenness_centrality(graph)
+            return graph.betweenness_centrality()
         if self.value == self.LOCAL_CENTRALITY:
             return connection_type.local_centrality(graph)
+
+        # NEIGHBORHOOD
         if self.value == self.RECIPROCITY:
             return graph.reciprocity()
         if self.value == self.JACCARD_INDEX_NEIGHBORS:
             return self._jaccard_index(connection_type, graph)
         if self.value == self.NEIGHBORHOOD_DENSITY:
             return connection_type.density(graph)
-        # if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
-        #     return self._neighborhood_composition(connection_type, graph, user_id, self.data)
         if self.value == self.NEIGHBORHOOD_QUALITY:
             return self._neighborhood_composition(connection_type, graph, users_selection=users_selection, percent=True)
+
+        # if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
+        #     return self._neighborhood_composition(connection_type, graph, user_id, self.data)
+
         # if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
         #     return self._count_difference(connection_type, graph, user_id)
         # if self.value is self.NEW_NEIGHBORS:

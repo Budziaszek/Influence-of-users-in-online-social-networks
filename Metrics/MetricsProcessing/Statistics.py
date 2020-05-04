@@ -12,7 +12,7 @@ class Statistics:
                                     (np.percentile, [99]), (np.percentile, [99.9]), (np.percentile, [99.99])]
 
     @staticmethod
-    def calculate(data, statistics_functions=None):
+    def calculate(data, statistics_functions=None, log_fun=logging.INFO):
         statistics_values = {}
         if statistics_functions is None:
             statistics_functions = Statistics.default_statistics_functions
@@ -28,17 +28,8 @@ class Statistics:
                     statistics_values[fun[0].__name__ + str(fun[1])] = None
                 else:
                     statistics_values[fun.__name__] = None
+
+        for key in statistics_values:
+            log_fun('\t' + str(key) + "," + str(statistics_values[key]))
         return statistics_values
 
-    @staticmethod
-    def save(folder, filename, values, log_fun=None):
-        if not os.path.exists('output/' + folder):
-            os.mkdir('output/' + folder)
-        if log_fun:
-            log_fun(filename)
-        with open('output/' + folder + filename, "w+") as file:
-            for key in values:
-                file.write(str(key) + "," + str(values[key]) + "\n")
-                logging.info(str(key) + "," + str(values[key]))
-                if log_fun:
-                    log_fun('\t' + str(key) + "," + str(values[key]))

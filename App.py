@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.uic.properties import QtCore
 
+from DataProcessing.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram
 from Manager import Manager
 from Metrics.Metrics import Metrics
 from Metrics.config import neighborhood_quality_in, neighborhood_quality_out, statistics_functions, \
@@ -80,7 +81,9 @@ class ManagerApp(QWidget):
         self.create_button("Correlation", self.correlation)
         self.create_button("Ranking", self.ranking)
         self.create_button("Table", self.table)
+        self.create_button("Agglomerative Clustering", self.agglomerative_clustering)
         self.create_button("K-means", self.k_means)
+        self.create_button("Stability", self.stability)
 
         hbox_main.addLayout(vbox_metrics)
         hbox_main.addLayout(self.vbox_actions)
@@ -145,14 +148,9 @@ class ManagerApp(QWidget):
             for value in self.get_metrics_definitions():
                 self.log_output.append('Calculating ' + value.get_name() + "...")
                 self.executor.submit(fn=self.manager.calculate,
-                                     save_to_file=False,
                                      metrics=value,
-                                     save_to_database=True,
-                                     data_condition_function=without_nan,
-                                     do_users_selection=True if value in [neighborhood_quality_in,
-                                                                          neighborhood_quality_out] else False,
+                                     condition_fun=without_nan,
                                      log_fun=self.log_output.append,
-                                     safe_save=False
                                      )
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
@@ -166,21 +164,21 @@ class ManagerApp(QWidget):
                                                 step=True)
             if self.options_window.exec_():
                 range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
-                self.wait_for_graphs()
                 for value in self.get_metrics_definitions():
                     self.log_output.append('Histogram for ' + value.get_name() + ".")
-                    self.manager.histogram(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                                           metrics=value,
-                                           n_bins=float(n_bins) if n_bins != '' else -1,
-                                           # cut=[float("-inf"), float("inf")],
-                                           cut=[float(range_start) if range_start != '' else float("-inf"),
-                                                float(range_end) if range_end != '' else float("inf")],
-                                           half_open=False,
-                                           integers=False,
-                                           step=float(step) if step != '' else -1,
-                                           normalize=False
-                                           )
-                Manager.show_plots()
+                    histogram(title=value.get_name(),
+                              data=self.manager.get_data(
+                                  neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                                  metrics=value,
+                                  cut_down=float(range_start) if range_start != '' else float("-inf"),
+                                  cut_up=float(range_end) if range_end != '' else float("inf")),
+                              n_bins=float(n_bins) if n_bins != '' else -1,
+                              half_open=False,
+                              integers=False,
+                              step=float(step) if step != '' else -1,
+                              normalize=False
+                              )
+                show_plots()
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
 
@@ -192,34 +190,34 @@ class ManagerApp(QWidget):
                                                 n_bins=True)
             if self.options_window.exec_():
                 range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
-                self.wait_for_graphs()
-                for value in self.get_metrics_definitions():
+                values = self.get_metrics_definitions()
+                for value in values:
                     self.log_output.append('Line histogram for ' + value.get_name() + ".")
-                    self.manager.distribution_linear(
-                        neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                        metrics=[value],
-                        cut=(float(range_start) if range_start != '' else float("-inf"),
-                             float(range_end) if range_end != '' else float("inf")),
+                    distribution_linear(
+                        data=self.manager.get_data(neighborhood_mode=self.neighborhood_mode,
+                                                   metrics={value.get_name(): value},
+                                                   cut_down=float(range_start) if range_start != '' else float("-inf"),
+                                                   cut_up=float(range_end) if range_end != '' else float("inf")),
                         n_bins=float(n_bins) if n_bins != '' else -1)
-                self.manager.distribution_linear(
-                    neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                    metrics=self.get_metrics_definitions(),
-                    cut=(float('-inf'), float('inf')),
+                distribution_linear(
+                    data=self.manager.get_data(neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                                               metrics={value.get_name(): value for value in values},
+                                               cut_down=float(range_start) if range_start != '' else float("-inf"),
+                                               cut_up=float(range_end) if range_end != '' else float("inf")),
                     n_bins=float(n_bins) if n_bins != '' else -1)
-                Manager.show_plots()
+                show_plots()
 
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
 
     def statistics(self):
         try:
-            self.wait_for_graphs()
             for value in self.get_metrics_definitions():
-                self.log_output.append('Statistics for ' + value.get_name() + " (saved in output/statistics).")
-                self.manager.statistics(
-                    neighborhood_mode=self.neighborhood_mode,
-                    metrics=value,
-                    statistics=statistics_functions,
+                self.log_output.append('Statistics for ' + value.get_name() + " (saved in output/data_statistics).")
+                data_statistics(
+                    title=value.get_name(),
+                    data=self.manager.get_data(neighborhood_mode=self.neighborhood_mode,
+                                               metrics=value),
                     normalize=True,
                     log_fun=self.log_output.append,
                 )
@@ -228,7 +226,6 @@ class ManagerApp(QWidget):
 
     def correlation(self):
         try:
-            self.wait_for_graphs()
             values = self.get_metrics_definitions()
             self.log_output.append('Correlation for ' + str([value.get_name() for value in values])
                                    + " (saved in output/correlation).")
@@ -263,12 +260,19 @@ class ManagerApp(QWidget):
             self.log_output.append('Exception: ' + str(e))
 
     def k_means(self):
+        self.clustering("k-means")
+        pass
+
+    def agglomerative_clustering(self):
+        self.clustering('agglomerative')
+
+    def clustering(self, t):
         try:
             scenarios = [clustering_scenario_1,
                          clustering_scenario_2,
                          clustering_scenario_3]
             self.options_window = OptionsWindow(parent=self,
-                                                text='K-means options',
+                                                text='Clustering options',
                                                 range_start=True,
                                                 range_end=True,
                                                 n_bins=True,
@@ -283,7 +287,7 @@ class ManagerApp(QWidget):
                     items_list = self.metrics_list.findItems(metrics, Qt.MatchContains)
                     self.metrics_list.takeItem(self.metrics_list.row(items_list[0]))
                 values = self.get_metrics_definitions()
-                self.log_output.append('K-means clustering for ' + str(
+                self.log_output.append('Clustering for ' + str(
                     [value.get_name() for value in values] if scenario == '' else str(scenario))
                                        + " (result will be saved in output/clustering).")
                 if scenario == '':
@@ -292,17 +296,30 @@ class ManagerApp(QWidget):
                 else:
                     scenario = scenarios[int(scenario) - 1]
 
-                self.executor.submit(self.manager.k_means,
-                                     n_clusters=float(n_bins) if n_bins != '' else 6,
-                                     parameters=values if scenario is None else scenario,
-                                     users_selection=self.manager.select_users(
-                                         neighborhood_mode=self.neighborhood_mode,
-                                         metrics=ManagerApp.get_single_metrics_definition(metrics),
-                                         values_start=float(range_start) if range_start != '' else float("-inf"),
-                                         values_stop=float(range_end) if range_end != '' else float("inf"))
-                                     if metrics != '' else None,
-                                     log_fun=self.log_output.append,
-                                     )
+                if t == 'k-means':
+                    self.executor.submit(self.manager.k_means,
+                                         n_clusters=float(n_bins) if n_bins != '' else 6,
+                                         parameters=values if scenario is None else scenario,
+                                         users_selection=self.manager.select_users(
+                                             neighborhood_mode=self.neighborhood_mode,
+                                             metrics=ManagerApp.get_single_metrics_definition(metrics),
+                                             values_start=float(range_start) if range_start != '' else float("-inf"),
+                                             values_stop=float(range_end) if range_end != '' else float("inf"))
+                                         if metrics != '' else None,
+                                         log_fun=self.log_output.append,
+                                         )
+                elif t == 'agglomerative':
+                    self.executor.submit(self.manager.agglomerative_clustering,
+                                         n_clusters=float(n_bins) if n_bins != '' else 6,
+                                         parameters=values if scenario is None else scenario,
+                                         users_selection=self.manager.select_users(
+                                             neighborhood_mode=self.neighborhood_mode,
+                                             metrics=ManagerApp.get_single_metrics_definition(metrics),
+                                             values_start=float(range_start) if range_start != '' else float("-inf"),
+                                             values_stop=float(range_end) if range_end != '' else float("inf"))
+                                         if metrics != '' else None,
+                                         log_fun=self.log_output.append,
+                                         )
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
 
@@ -316,7 +333,6 @@ class ManagerApp(QWidget):
                                                              range(self.metrics_list.count())])
             if self.options_window.exec_():
                 range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
-                self.wait_for_graphs()
                 metrics = self.get_single_metrics_definition(metrics) if metrics != '' else None
                 if metrics:
                     self.log_output.append('Display ' + metrics.get_name() + ".")
@@ -328,6 +344,39 @@ class ManagerApp(QWidget):
                         log_fun=self.log_output.append)
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
+
+    def stability(self):
+        self.options_window = OptionsWindow(parent=self, text='Display options',
+                                            range_start=True,
+                                            range_end=True,
+                                            metrics=True,
+                                            metrics_sel=[self.metrics_list.item(i).text() for i in
+                                                         range(self.metrics_list.count())])
+        if self.options_window.exec_():
+            range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
+            try:
+                if metrics != '':
+                    items_list = self.metrics_list.findItems(metrics, Qt.MatchContains)
+                    self.metrics_list.takeItem(self.metrics_list.row(items_list[0]))
+                self.log_output.append('Stability...')
+                values = self.get_metrics_definitions()
+                users = None
+                if metrics != '':
+                    users = self.manager.select_users(
+                        neighborhood_mode=self.neighborhood_mode,
+                        metrics=ManagerApp.get_single_metrics_definition(metrics),
+                        values_start=float(range_start) if range_start != '' else float("-inf"),
+                        values_stop=float(range_end) if range_end != '' else float("inf"))
+                for value in values:
+                    self.log_output.append('Stability for ' + value.get_name()
+                                           + " (result will be saved in output/stability).")
+                    self.executor.submit(self.manager.stability,
+                                         neighborhood_mode=self.neighborhood_mode,
+                                         metrics=value,
+                                         users_selection=users
+                                         )
+            except Exception as e:
+                self.log_output.append('Exception: ' + str(e))
 
     def closeEvent(self, event):
         self.window_metrics_selection.close()

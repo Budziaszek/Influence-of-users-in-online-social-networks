@@ -87,9 +87,8 @@ class SocialNetworkGraph:
     def closeness_centrality(self, reverse=False):
         return nx.closeness_centrality(self._G if not reverse else self._G.reverse())
 
-    def betweenness_centrality(self, reverse=False):
-        # TODO check if there is a difference
-        return nx.betweenness_centrality(self._G if not reverse else self._G.reverse())
+    def betweenness_centrality(self):
+        return nx.betweenness_centrality(self._G)
 
     def local_centrality(self, in_neighborhood=True):
         graph = self._G.reverse() if in_neighborhood else self._G

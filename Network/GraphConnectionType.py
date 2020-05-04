@@ -113,12 +113,6 @@ class GraphConnectionType:
         elif self.value == self.OUT:
             return graph.closeness_centrality(reverse=True)
 
-    def betweenness_centrality(self, graph):
-        if self.value == self.IN:
-            return graph.betweenness_centrality()
-        elif self.value == self.OUT:
-            return graph.betweenness_centrality(reverse=True)
-
     def local_centrality(self, graph):
         if self.value == self.IN:
             return graph.local_centrality()
