@@ -12,10 +12,11 @@ class Statistics:
                                     (np.percentile, [99]), (np.percentile, [99.9]), (np.percentile, [99.99])]
 
     @staticmethod
-    def calculate(data, statistics_functions=None, log_fun=logging.INFO):
+    def calculate(data, statistics_functions=None, log_fun=logging.info):
         statistics_values = {}
         if statistics_functions is None:
             statistics_functions = Statistics.default_statistics_functions
+
         for fun in statistics_functions:
             try:
                 if isinstance(fun, tuple):

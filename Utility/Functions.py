@@ -88,3 +88,11 @@ def modify_data(data, data_condition_function, new_value=0):
         else:
             data_modified.append(new_value)
     return data_modified
+
+
+def sum_by_key(data):
+    d = collections.defaultdict(int)
+    for a in data:
+        for value in a:
+            d[value[0]] += 1
+    return d

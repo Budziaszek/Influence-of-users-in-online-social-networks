@@ -22,6 +22,14 @@ class SocialNetworkGraph:
             data = self._G.get_edge_data(*edge)
             self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
 
+    def add_attribute(self, name, data):
+        print(data)
+        nx.set_node_attributes(self._G, data, name)
+
+    def get_nodes_attribute(self, attr):
+        d = nx.get_node_attributes(self._G, attr)
+        return d
+
     def successors(self, node):
         return self._G.successors(node)
 

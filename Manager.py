@@ -22,7 +22,7 @@ from Metrics.MetricsProcessing.Histogram import Histogram
 from Metrics.MetricsProcessing.Prediction import Prediction
 from Metrics.config import degree_in_static
 from Network.GraphIterator import GraphIterator
-from Utility.Functions import make_data_positive, modify_data
+from Utility.Functions import make_data_positive, modify_data, sum_by_key
 from Utility.ProgressBar import ProgressBar
 from DataProcessing.PostgresDatabaseEngine import PostgresDatabaseEngine
 from Network.SocialNetworkGraph import SocialNetworkGraph
@@ -38,6 +38,8 @@ class Manager:
     static_graph = None
     days = []
     comments_to_add = None
+    posts_counts = []
+    responses_counts = []
     neighborhood_mode = None
     colored = '\x1b[34m'
     background = '\x1b[30;44m'
@@ -99,7 +101,7 @@ class Manager:
             self._days_count = self._number_of_days_in_interval * 5
         self.authors = self._get_authors_parameter("name")
 
-    def calculate(self, metrics, condition_fun=None, log_fun=logging.INFO):
+    def calculate(self, metrics, condition_fun=None, log_fun=logging.info):
         """
         Calculated metrics for current neighborhood_mode (self.neighborhood_mode) and saves result to database.
         :param metrics: Metrics
@@ -110,26 +112,30 @@ class Manager:
             Defines logging function.
         """
         log_fun("Calculating %s (%s)" % (metrics.get_name(), self.neighborhood_mode))
-        first_activity_dates = self._get_first_activity_dates()
-        if metrics.value in [Metrics.NEIGHBORHOOD_QUALITY]:
-            users_selection = self.select_users(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                                                degree_in_static,
-                                                percent=0.1)
-            data = metrics.calculate(self.authors.keys(), first_activity_dates, users_selection=users_selection)
-        else:
-            data = metrics.calculate(self.authors.keys(), first_activity_dates)
-        log_fun("Calculated " + metrics.get_name() + ". Saving...")
-        log_fun("Calculated")
+        try:
+            first_activity_dates = self._get_first_activity_dates()
+            if metrics.value in [Metrics.NEIGHBORHOOD_QUALITY]:
+                users_selection = self.select_users(NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                                                    degree_in_static,
+                                                    percent=0.1)
+                data = metrics.calculate(self.authors.keys(), first_activity_dates, users_selection=users_selection)
+            else:
+                data = metrics.calculate(self.authors.keys(), first_activity_dates)
+            log_fun("Calculated " + metrics.get_name() + ". Saving...")
 
-        bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.neighborhood_mode), "Processed",
-                          len(self.authors.keys()))
-        for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
-            bar.next()
-            d = data[user_id]
-            m = modify_data(d, condition_fun)
-            self._save_to_database(self.neighborhood_mode.short() + "_" + metrics.get_name(), user_id, m)
+            # bar = ProgressBar("Processing %s (%s)\n" % (metrics.get_name(), self.neighborhood_mode), "Processed",
+            #                   len(self.authors.keys()))
+
+            for i, user_id in enumerate(sorted(self.authors.keys())):  # For each author (node)
+                # bar.next()
+                print(user_id)
+                d = data[user_id]
+                m = modify_data(d, condition_fun)
+                self._save_to_database(self.neighborhood_mode.short() + "_" + metrics.get_name(), user_id, m)
+        except Exception as e:
+            print('Exception saving:', e)
         self._save_histograms_to_file(str(self.neighborhood_mode.value))
-        bar.finish()
+        # bar.finish()
         log_fun("Saved " + metrics.get_name() + ".")
 
     def clean(self, neighborhood_mode, metrics):
@@ -163,7 +169,7 @@ class Manager:
         # Cut data
         return {k: v for k, v in data.items() if cut_down < v < cut_up and k in users_selection}
 
-    def correlation(self, neighborhood_mode, metrics, functions, do_abs=True, log_fun=logging.INFO):
+    def correlation(self, neighborhood_mode, metrics, functions, do_abs=True, log_fun=logging.info):
         """
         Calculates, saves and displays correlation.
         :param neighborhood_mode: NeighborhoodMode
@@ -180,21 +186,17 @@ class Manager:
         pd.set_option('display.width', None)
         keys = sorted(self.authors.keys())
         df = pd.DataFrame()
+
         for m in metrics:
             if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
                 for f in functions:
                     data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_"
                                                                        + m.get_name(), f)
-                    x = []
-                    for key in keys:
-                        x.append(data[key])
-                    df[m.get_name() + "_" + f.__name__] = x
+
+                    df[m.get_name() + "_" + f.__name__] = [data[key] for key in keys]
             else:
                 data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
-                x = []
-                for key in keys:
-                    x.append(data[key])
-                df[m.get_name()] = x
+                df[m.get_name()] = [data[key] for key in keys]
 
         if not os.path.exists('output/correlation'):
             os.mkdir('output/correlation')
@@ -244,11 +246,11 @@ class Manager:
         for key in c_rate:
             log_fun(key)
             for r in c_rate[key]:
-                log_fun("\t", str(r), str(c_rate[key][r]))
+                log_fun("\t" + str(r) + str(c_rate[key][r]))
 
         plt.show()
 
-    def table(self, neighborhood_mode, metrics, functions, title='table', table_mode="index"):
+    def table(self, neighborhood_mode, metrics, functions, title='table', table_mode="index", log_fun=logging.info):
         """
         Creates table of metrics values for all users.
         :param neighborhood_mode: NeighborhoodMode
@@ -266,48 +268,48 @@ class Manager:
             'name' - user name ordered by index table
         :return:
         """
+        log_fun('Table (' + table_mode + ') for ' + str([m.get_name() for m in metrics]) + " ...")
         pd.set_option('display.width', None)
         pd.set_option('display.max_rows', None)
         keys = sorted(self.authors.keys())
         df = pd.DataFrame()
         df['Name'] = [self.authors[key] for key in keys]
-        for m in metrics:
-            # logging.INFO("Reading.. " + m.get_name())
-            if m.graph_iterator.graph_mode[0] is GraphIterator.ITERATOR.DYNAMIC:
-                for f in functions:
+        try:
+            for m, f in zip(metrics, functions):
+                print(m.get_name())
+                if m.graph_iterator.graph_mode[0] == GraphIterator.ITERATOR.DYNAMIC:
                     data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name(),
                                                                        f)
-                    x = []
-                    for key in keys:
-                        x.append(data[key])
-                    df[m.get_name() + "_" + f.__name__] = x
+                    df[m.get_name() + "_" + f.__name__] = [data[key] for key in keys]
                     if table_mode is not "value":
                         df[m.get_name() + "_" + f.__name__] = df[m.get_name() + "_" + f.__name__].rank(ascending=False)
+                else:
+                    data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
+                    df[m.get_name()] = [data[key] for key in keys]
+                    if table_mode is not "value":
+                        df[m.get_name()] = df[m.get_name()].rank(ascending=False)
+            if table_mode is not "name":
+                result = df
             else:
-                data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + m.get_name())
-                x = []
-                for key in keys:
-                    x.append(data[key])
-                df[m.get_name()] = x
-                if table_mode is not "value":
-                    df[m.get_name()] = df[m.get_name()].rank(ascending=False)
-        if table_mode is not "name":
-            result = df
-        else:
-            metrics_keys = df.keys()
-            authors_rankings = pd.DataFrame()
-            for m in metrics_keys:
-                logging.INFO("Checking table for.. " + m)
-                if m != 'Name':
-                    authors_rankings[m] = list(df.sort_values(m, ascending=False)['Name'])
-            result = authors_rankings
+                metrics_keys = df.keys()
+                authors_rankings = pd.DataFrame()
+                for m in metrics_keys:
+                    if m != 'Name':
+                        authors_rankings[m] = list(df.sort_values(m, ascending=False)['Name'])
+                result = authors_rankings
 
-        if not os.path.exists('output/table'):
-            os.mkdir('output/table')
+            if not os.path.exists('output'):
+                os.mkdir('output')
 
-        result.to_csv(r'output/table/' + table_mode + "_" + title + '.txt', index=True, header=True)
+            if not os.path.exists('output/table'):
+                os.mkdir('output/table')
 
-    def display_between_range(self, neighborhood_mode, metrics, minimum, maximum, log_fun=logging.INFO):
+            result.to_csv(r'output/table/' + table_mode + "_" + title + '.txt', index=True, header=True)
+            log_fun('Saved (saved in output/table)')
+        except Exception as e:
+            print(e)
+
+    def display_between_range(self, neighborhood_mode, metrics, minimum, maximum, stats_fun=None, log_fun=logging.info):
         """
         Displays users for whom metrics value is between range (minimum, maximum).
         :param neighborhood_mode: NeighborhoodMode
@@ -320,15 +322,19 @@ class Manager:
             Defines logging function
         """
         if metrics is not None:
-            data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
+            data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(),
+                                                               stats_fun)
             for item in sorted(data.items(), key=lambda k: (k[1], k[0]), reverse=True):
                 if minimum < item[1] < maximum:
-                    log_fun(str(self.authors[item[0]]) + " " + str(item[1]))
+                    log_fun('\t' + str(self.authors[item[0]]) + " " + str(item[1]))
 
-    def select_users(self, neighborhood_mode, metrics, values_start=None, values_stop=None, percent=None):
+    def select_users(self, neighborhood_mode, metrics, values_start=None, values_stop=None, percent=None,
+                     selection=None):
         data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
         sorted_keys = [item[0] for item in sorted(data.items(), key=lambda k: (k[1], k[0]))]
         sorted_keys.reverse()
+        if selection is not None:
+            sorted_keys = [k for k in sorted_keys if k in selection]
         if percent is None:
             return [k for k in sorted_keys if values_start <= data[k] <= values_stop]
         else:
@@ -346,15 +352,19 @@ class Manager:
         :param log_fun: function
             Defines logging function
         """
-        log_fun('Clustering: k-means, n_clusters= %s...' % str(n_clusters) + '\n')
-        data, _data = self._prepare_clustering_data(parameters, users_selection)
-        log_fun('\tData prepared.')
-        k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
-        k_means.fit(data)
-        log_fun('\tData fitted.')
-        self._save_clusters([p[0].short() + "_" + p[1].get_name() for p in parameters],
-                            k_means.labels_, n_clusters, _data, users_selection, log_fun=log_fun)
-        log_fun('Clustering finished. Result saved in output folder.')
+        try:
+            log_fun('Clustering: k-means, n_clusters= %s...' % str(n_clusters) + '\n')
+            data, _data = self._prepare_clustering_data(parameters, users_selection=users_selection)
+            log_fun('\tData prepared.')
+            k_means = KMeans(init='k-means++', n_clusters=n_clusters, n_init=10)
+            k_means.fit(data)
+            log_fun('\tData fitted.')
+            self._save_clusters([p[0].short() + "_" + p[1].get_name() + ('' if len(p) == 3 else "_" + p[3].__name__)
+                                 for p in parameters],
+                                k_means.labels_, n_clusters, _data, users_selection, log_fun=log_fun)
+            log_fun('Clustering finished. Result saved in output folder.')
+        except Exception as e:
+            print("K-means:", e)
 
     def plot_dendrogram(self, model, **kwargs):
         # Create linkage matrix and then plot the dendrogram
@@ -378,16 +388,16 @@ class Manager:
         dendrogram(linkage_matrix, **kwargs)
 
     def agglomerative_clustering(self, n_clusters, parameters, users_selection=None, log_fun=logging.info):
-        log_fun('Clustering: agglomerative clustering...' + '\n')
+        log_fun('Clustering: agglomerative clustering n_clusters= %s...' % str(n_clusters) + '\n')
         data, _data = self._prepare_clustering_data(parameters, users_selection)
+        log_fun('\tData prepared.')
         clustering = AgglomerativeClustering(n_clusters=n_clusters).fit(data)
-
-        print('done')
+        log_fun('\tData fitted.')
         # self.plot_dendrogram(clustering, truncate_mode='level', p=3)
         # plt.xlabel("Number of points in node (or index of point if no parenthesis).")
         # plt.show()
-
-        self._save_clusters([p[0].short() + "_" + p[1].get_name() for p in parameters],
+        self._save_clusters([p[0].short() + "_" + p[1].get_name() + ('' if len(p) == 3 else "_" + p[3].__name__)
+                             for p in parameters],
                             clustering.labels_, n_clusters, _data, users_selection, log_fun=log_fun)
         log_fun('Clustering finished. Result saved in output folder.')
 
@@ -489,7 +499,6 @@ class Manager:
         #         logging.WARNING(str(e))
         # stability['adf'] = adf
 
-
         FileWriter.write_data_frame_to_file(FileWriter.STABILITY, metrics.get_name(), stability)
 
         histogram("Stability std", {key: stability.set_index('id')['std'][key] for key in keys}, n_bins=15,
@@ -550,6 +559,12 @@ class Manager:
         if self.neighborhood_mode.do_read_comments_to_comments_from_others:
             self._comments_to_comments_from_others.append_data(day_start, day_end)
 
+    def select_post_count(self, day_start, day_end):
+        self.posts_counts.append(self._databaseEngine.get_posts(day_start, day_end))
+
+    def select_responses_count(self, day_start, day_end):
+        self.responses_counts.append(self._databaseEngine.get_responses(day_start, day_end))
+
     def _set_comments_to_add(self):
         """
         Sets variable, which contains comments included in model.
@@ -576,16 +591,17 @@ class Manager:
         and store values in array (chronologically day by day)
         """
         days = []
-        bar = ProgressBar("Selecting _data", "DataProcessing selected", self._days_count)
         for day in (self._dates_range[0] + dt.timedelta(n) for n in range(self._days_count)):
+            print(day)
             day_start = day.replace(hour=00, minute=00, second=00)
             day_end = day.replace(hour=23, minute=59, second=59)
             days.append(day_start.date())
             self._select_comments(day_start, day_end)
-            bar.next()
-        bar.finish()
+            self.select_post_count(day_start, day_end)
+            self.select_responses_count(day_start, day_end)
         self._set_comments_to_add()
         self.days = days
+        print("Done")
 
     def _add_data_to_graphs(self, graph_type):
         """
@@ -617,6 +633,11 @@ class Manager:
         for comments in self.comments_to_add:
             edges = np.concatenate(comments, axis=0)
             graph.add_edges(edges)
+            print("add - static")
+            print(len(self.posts_counts), self.posts_counts)
+            graph.add_attribute('posts', sum_by_key(self.posts_counts))
+            graph.add_attribute('responses', sum_by_key(self.responses_counts))
+            print("add - end (static)")
         graph.start_day, graph.end_day = self.days[0], self.days[-1]
         self.static_graph = graph
 
@@ -635,6 +656,9 @@ class Manager:
             for comments in self.comments_to_add:
                 edges = np.concatenate(comments[i:end + 1], axis=0)
                 graph.add_edges(edges)
+                print("add - dynamic, ", i)
+                graph.add_attribute('posts', sum_by_key(self.posts_counts[i:end + 1]))
+                graph.add_attribute('responses', sum_by_key(self.responses_counts[i:end + 1]))
             graph.start_day, graph.end_day = self.days[i], self.days[end]
             self.dynamic_graphs.append(graph)
             graph = SocialNetworkGraph()
@@ -660,9 +684,13 @@ class Manager:
             self._load_graphs_from_file(graphs_file_name)
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
         else:
+            print("Do not exists")
             self._read_salon24_comments_data_by_day()
+            print(1)
             self._add_data_to_graphs("sd")
+            print(2)
             GraphIterator.set_graphs(self.static_graph, self.dynamic_graphs)
+            print(3)
             self._save_graphs_to_file(graphs_file_name)
 
     def _load_graphs_from_file(self, graphs_file_name):
@@ -687,21 +715,30 @@ class Manager:
         """
         data = {}
         _data = {}
-
-        for parameter in parameters:
-            neighborhood_mode = parameter[0]
-            metrics = parameter[1]
-            weight = parameter[2]
-            f = None if len(parameter) == 3 else parameter[3]
-            name = neighborhood_mode.short() + "_" + metrics.get_name()
-            r = self._databaseEngine.get_array_value_column(name, f)
-            users_selection = self.authors.keys() if not users_selection else users_selection
-            data[name] = [r[k] for k in sorted(r.keys()) if k in users_selection]
-            minimum, maximum = min(data[name]), max(data[name])
-            _data[name] = data[name].copy()
-            data[name] = [(x - minimum) / (maximum - minimum) * weight for x in data[name]]
-        return np.column_stack(data[p[0].short() + "_" + p[1].get_name()] for p in parameters), np.column_stack(
-            _data[p[0].short() + "_" + p[1].get_name()] for p in parameters)
+        try:
+            print(parameters)
+            for parameter in parameters:
+                neighborhood_mode = parameter[0]
+                metrics = parameter[1]
+                weight = parameter[2]
+                f = None if len(parameter) == 3 else parameter[3]
+                print(f, metrics.get_name())
+                name = neighborhood_mode.short() + "_" + metrics.get_name()
+                full_name = name + ('' if f is None else "_" + f.__name__)
+                r = self._databaseEngine.get_array_value_column(name, f)
+                users_selection = self.authors.keys() if not users_selection else users_selection
+                data[full_name] = [r[k] for k in sorted(r.keys()) if k in users_selection]
+                minimum, maximum = min(data[full_name]), max(data[full_name])
+                _data[full_name] = data[full_name].copy()
+                data[full_name] = [(x - minimum) / (maximum - minimum) * weight for x in data[full_name]]
+            print("Prepared")
+            data = np.column_stack(data[p[0].short() + "_" + p[1].get_name()
+                                        + ('' if len(p) == 3 else "_" + p[3].__name__)] for p in parameters)
+            _data = np.column_stack(_data[p[0].short() + "_" + p[1].get_name()
+                                          + ('' if len(p) == 3 else "_" + p[3].__name__)] for p in parameters)
+            return data, _data
+        except Exception as e:
+            print("Prepare:", e)
 
     class Cluster:
         def __init__(self):
@@ -727,109 +764,142 @@ class Manager:
         interesting_users_1000 = self._databaseEngine.get_interesting_users(1000)
 
         for cluster in range(n_clusters):
-            indexes = np.where(classes == cluster)
-            users_ids = np.array(sorted(self.authors.keys()))[indexes] if not users_selection \
-                else np.array(sorted(users_selection))[indexes]
+            print(cluster)
+            try:
+                indexes = np.where(classes == cluster)
+                users_ids = np.array(sorted(self.authors.keys()))[indexes] if not users_selection \
+                    else np.array(sorted(users_selection))[indexes]
 
-            log_fun('Cluster: %s' % cluster)
-            # log_fun(
-            #     '\t center: %s\n\t number of users: %s' % ([round(c, 3) for c in n_clusters[cluster]], len(users_ids)))
-            log_fun('Parameters:')
+                log_fun('Cluster: %s' % (cluster + 1))
+                log_fun('\t Number of users: %s' % (len(users_ids)))
+                log_fun('   Parameters:')
 
-            save['stats'].extend(['min', 'max', 'mean', 'stdev'])
-            empty_stats = ['' for _ in range(3)]
-            save['cluster'].append(cluster)
-            save['cluster'].extend(empty_stats)
-            save['size'].append(len(users_ids))
-            save['size'].extend(empty_stats)
+                save['stats'].extend(['min', 'max', 'mean', 'stdev'])
+                empty_stats = ['' for _ in range(3)]
+                save['cluster'].append(cluster)
+                save['cluster'].extend(empty_stats)
+                save['size'].append(len(users_ids))
+                save['size'].extend(empty_stats)
 
-            for i, parameter_name in enumerate(parameters_names):
-                values = data[indexes, i][0]
-                r = [round(min(values), 3),
-                     round(max(values), 3),
-                     round(mean(values), 3),
-                     round(stdev(values) if len(values) > 1 else values[0], 3)]
-                ranges[parameter_name].append([r[0], r[1]])
-                p_values[parameter_name].append(values)
-                save[parameter_name].extend(r)
-                log_fun("\t %s: min= %s, max= %s, mean= %s, stdev= %s" % (parameter_name, r[0], r[1], r[2], r[3]))
+                for i, parameter_name in enumerate(parameters_names):
+                    values = data[indexes, i][0]
+                    r = [round(min(values), 3),
+                         round(max(values), 3),
+                         round(mean(values), 3),
+                         round(stdev(values) if len(values) > 1 else values[0], 3)]
+                    ranges[parameter_name].append([r[0], r[1]])
+                    p_values[parameter_name].append(values)
+                    save[parameter_name].extend(r)
+                    log_fun("\t %s: min= %s, max= %s, mean= %s, stdev= %s" % (parameter_name, r[0], r[1], r[2], r[3]))
 
-            log_fun("Sample users:")
-            s = []
-            len_50 = 0
-            len_250 = 0
-            len_500 = 0
-            len_1000 = 0
+                log_fun("   Sample users:")
+                s = []
+                len_50 = 0
+                len_250 = 0
+                len_500 = 0
+                len_1000 = 0
 
-            for i in users_ids:
-                if i in interesting_users_50:
-                    s.append(self.authors[i])
-                    parameters = [
-                        self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
-                        for parameter_name in parameters_names]
-                    log_fun("\t %s: %s" % (self.authors[i], [round(p, 3) for p in parameters]))
-                    len_50 += 1
-                    len_250 += 1
-                    len_500 += 1
-                    len_1000 += 1
-                elif i in interesting_users_250:
-                    len_250 += 1
-                    len_500 += 1
-                    len_1000 += 1
-                elif i in interesting_users_500:
-                    len_500 += 1
-                    len_1000 += 1
-                elif i in interesting_users_1000:
-                    len_1000 += 1
-            log_fun('\n')
-            save['sample'].extend([s, *empty_stats])
-            save['first 50'].extend([len_50, len_50 / len(users_ids) * 100, *empty_stats[:-1]])
-            save['first 250'].extend([len_250, len_250 / len(users_ids) * 100, *empty_stats[:-1]])
-            save['first 500'].extend([len_500, len_500 / len(users_ids) * 100, *empty_stats[:-1]])
-            save['first 1000'].extend([len_1000, len_1000 / len(users_ids) * 100, *empty_stats[:-1]])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['cluster', save['cluster']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['size', save['size']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['stats', save['stats']])
-        for parameter_name in parameters_names:
-            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), [parameter_name,
-                                                                                             save[parameter_name]])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['sample', save['sample']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 50', save['first 50']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 250', save['first 250']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 500', save['first 500']])
-        FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 1000', save['first 1000']])
+                for i in users_ids:
+                    if i in interesting_users_50:
+                        s.append(self.authors[i])
+                        # parameters = [
+                        #     self._databaseEngine.get_array_value_column_for_user(parameter_name, i, mean)
+                        #     for parameter_name in parameters_names]
+                        log_fun("\t %s" % self.authors[i])  #[round(p, 3) for p in parameters]))
+                        len_50 += 1
+                        len_250 += 1
+                        len_500 += 1
+                        len_1000 += 1
+                    elif i in interesting_users_250:
+                        len_250 += 1
+                        len_500 += 1
+                        len_1000 += 1
+                    elif i in interesting_users_500:
+                        len_500 += 1
+                        len_1000 += 1
+                    elif i in interesting_users_1000:
+                        len_1000 += 1
+                log_fun("\t 50= %s, 250= %s, 500= %s, 1000= %s" % (len_50, len_250, len_500, len_1000))
+                log_fun('\n')
+                save['sample'].extend([s, *empty_stats])
+                save['first 50'].extend([len_50, len_50 / len(users_ids) * 100, *empty_stats[:-1]])
+                save['first 250'].extend([len_250, len_250 / len(users_ids) * 100, *empty_stats[:-1]])
+                save['first 500'].extend([len_500, len_500 / len(users_ids) * 100, *empty_stats[:-1]])
+                save['first 1000'].extend([len_1000, len_1000 / len(users_ids) * 100, *empty_stats[:-1]])
+            except Exception as e:
+                print(e)
 
-        Manager.plot_overlapping(parameters_names, ranges, False)
-        Manager.plot_overlapping(parameters_names, p_values, True)
+        print("before")
 
-        plt.show()
+        try:
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['cluster', save['cluster']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['size', save['size']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['stats', save['stats']])
+            for parameter_name in parameters_names:
+                FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), [parameter_name,
+                                                                                            save[parameter_name]])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['sample', save['sample']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 50', save['first 50']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 250', save['first 250']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters), ['first 500', save['first 500']])
+            FileWriter.write_split_row_to_file(FileWriter.CLUSTERING, str(n_clusters),
+                                               ['first 1000', save['first 1000']])
+        except Exception as e:
+            print(e)
+
+        print("after")
+
+        # Manager.plot_overlapping(parameters_names, ranges, False)
+        try:
+            Manager.plot_overlapping(parameters_names, p_values, True)
+            plt.show()
+        except Exception as e:
+            print(e)
 
     @staticmethod
     def plot_overlapping(parameters_names, arr, points=False):
-        fig, axs = plt.subplots(len(parameters_names))
-        plots = None
-        for i, key in enumerate(parameters_names):
-            plots = Manager.plot_overlapping_ranges_by_points(arr[key], axs[i]) if points \
-                else Manager.plot_overlapping_ranges(arr[key], axs[i])
-            axs[i].set_title(key, fontsize=6)
-        fig.legend(plots, labels=['Cluster ' + str(i) for i in range(len(parameters_names))], loc="center right",
-                   bbox_to_anchor=(0.99, 0.5), borderaxespad=0.1, prop={'size': 6})
-        fig.tight_layout()
-        plt.subplots_adjust(right=0.85)
+        try:
+            if len(parameters_names) > 3:
+                x, y = math.ceil(len(parameters_names) / 2), 2
+                fig, axs = plt.subplots(x, y)
+            else:
+                fig, axs = plt.subplots(len(parameters_names))
+            plots = None
+            for i, key in enumerate(parameters_names):
+                print(int(i / 2), i % 2)
+                a = axs[i] if len(parameters_names) <= 3 else axs[int(i / 2), i % 2]
+                plots = \
+                    Manager.plot_overlapping_ranges_by_points(arr[key], a) if points \
+                        else Manager.plot_overlapping_ranges(arr[key], a)
+
+                a.set_title(key, fontsize=6)
+            fig.legend(plots, labels=['Cluster ' + str(i + 1) for i in range(len(arr[parameters_names[-1]]))],
+                       loc="center right",
+                       bbox_to_anchor=(0.99, 0.5), borderaxespad=0.1, prop={'size': 6})
+            fig.tight_layout()
+            plt.subplots_adjust(right=0.85)
+
+            if len(parameters_names) % 2 != 0:
+                axs[-1, -1].axis('off')
+        except Exception as e:
+            print(e)
 
     @staticmethod
     def plot_overlapping_ranges_by_points(points, axs):
+        print("TU")
         axs.set_ylim([-2, 2 * len(points) + 2])
         axs.yaxis.set_visible(False)
+        print("NEXT")
 
         for item in axs.get_xticklabels():
             item.set_fontsize(6)
 
         x = points
-        y = [i * 2 for i in range(len(points))]
+        y = [(len(points) - i) * 2 for i in range(len(points))]
 
         plots = []
         for i in range(len(points)):
+            print(len(x[i]), y[i])
             plot = axs.plot(x[i], [y[i] for _ in range(len(x[i]))], 'o')
             for p in plot:
                 p.set_alpha(0.5)

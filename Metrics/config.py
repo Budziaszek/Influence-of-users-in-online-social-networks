@@ -1,21 +1,12 @@
 import statistics
 from statistics import stdev, mean
 
-from Metrics.Metrics import Metrics
+from Metrics.Metrics import Metrics, CONNECTION_IN, ITERATOR_STATIC, CONNECTION_OUT, ITERATOR_DYNAMIC, CONNECTION_IN_OUT
 from Network.GraphConnectionType import GraphConnectionType
 from Network.GraphIterator import GraphIterator
 from Network.NeighborhoodMode import NeighborhoodMode
 from Utility.Functions import coefficient_of_variation, max_mode
 import numpy as np
-
-CONNECTION_IN = GraphConnectionType(GraphConnectionType.IN)
-CONNECTION_OUT = GraphConnectionType(GraphConnectionType.OUT)
-CONNECTION_IN_OUT = [GraphConnectionType(GraphConnectionType.IN), GraphConnectionType(GraphConnectionType.OUT)]
-
-ITERATOR_STATIC = GraphIterator(GraphIterator.ITERATOR.STATIC)
-ITERATOR_DYNAMIC = GraphIterator(GraphIterator.ITERATOR.DYNAMIC)
-ITERATOR_CURRENT_NEXT = GraphIterator(GraphIterator.ITERATOR.DYNAMIC_CURR_NEXT)
-ITERATOR_DYNAMIC_AND_STATIC = GraphIterator([GraphIterator.ITERATOR.DYNAMIC, GraphIterator.ITERATOR.STATIC])
 
 degree_in_static = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_STATIC)
 weighted_degree_in_static = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_IN, ITERATOR_STATIC)
@@ -176,8 +167,8 @@ clustering_parameters = [
 
 clustering_scenario_1 = [
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static, 1),
-    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_out_static, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_in_static, 1),
+    (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_out_static, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_out_static, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, reciprocity, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, jaccard_index_neighbors_static, 1)
@@ -203,6 +194,10 @@ clustering_scenario_3 = [
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, density_neighborhood_in, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, neighborhood_quality_in, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, reciprocity, 1),
+]
+
+clustering_scenario_4 = [
+
 ]
 
 statistics_functions = [len, max, mean, stdev, #(np.percentile, [20]),

@@ -1,6 +1,18 @@
 import logging
 from collections import defaultdict
 
+from Network.GraphConnectionType import GraphConnectionType
+from Network.GraphIterator import GraphIterator
+
+CONNECTION_IN = GraphConnectionType(GraphConnectionType.IN)
+CONNECTION_OUT = GraphConnectionType(GraphConnectionType.OUT)
+CONNECTION_IN_OUT = [GraphConnectionType(GraphConnectionType.IN), GraphConnectionType(GraphConnectionType.OUT)]
+
+ITERATOR_STATIC = GraphIterator(GraphIterator.ITERATOR.STATIC)
+ITERATOR_DYNAMIC = GraphIterator(GraphIterator.ITERATOR.DYNAMIC)
+ITERATOR_CURRENT_NEXT = GraphIterator(GraphIterator.ITERATOR.DYNAMIC_CURR_NEXT)
+ITERATOR_DYNAMIC_AND_STATIC = GraphIterator([GraphIterator.ITERATOR.DYNAMIC, GraphIterator.ITERATOR.STATIC])
+
 
 class Metrics:
     value = None
@@ -27,9 +39,15 @@ class Metrics:
     NEIGHBORHOOD_QUALITY = "neighborhood_quality"
 
     # STABILITY
-    # DEGREE_BETWEEN_INTERVALS_DIFFERENCE = "neighbors_count_difference"
-    # DIVIDE_NEIGHBORS = "divide_neighbors"
-    # NEW_NEIGHBORS = "new_neighbors"
+    NEIGHBORS_PER_INTERVAL = "neighbors_per_interval"
+    DEGREE_BETWEEN_INTERVALS_DIFFERENCE = "neighbors_count_difference"
+    JACCARD_INDEX_INTERVALS = "jaccard_index_intervals"
+    NEW_NEIGHBORS = "new_neighbors"
+    LOST_NEIGHBORS = "lost_neighbors"
+
+    # ACTIVITY
+    POSTS_ADDED = 'posts_added'
+    RESPONSES_ADDED = 'responses_added'
 
     METRICS_LIST = [
         DEGREE,
@@ -47,6 +65,15 @@ class Metrics:
         RECIPROCITY,
         JACCARD_INDEX_NEIGHBORS,
         NEIGHBORHOOD_QUALITY,
+
+        NEIGHBORS_PER_INTERVAL,
+        DEGREE_BETWEEN_INTERVALS_DIFFERENCE,
+        JACCARD_INDEX_INTERVALS,
+        NEW_NEIGHBORS,
+        LOST_NEIGHBORS,
+
+        POSTS_ADDED,
+        RESPONSES_ADDED,
     ]
 
     # TODO PageRank
@@ -66,12 +93,21 @@ class Metrics:
         self.graph_iterator = graph_iterator
         self.is_complex = False
         self.value = value
+        self.users_ids = None
+        self.none_before = False
+        self.users_selection = None
+        self.first_activity_dates = None
+        self.static_degree = None
         if not isinstance(connection_type, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
             self.connection_type = [connection_type, connection_type]
 
     def calculate(self, users_ids, first_activity_dates, none_before=False, users_selection=None):
         data = defaultdict(list)
         self.graph_iterator.reset()
+        self.users_ids = users_ids
+        self.first_activity_dates = first_activity_dates
+        self.none_before = none_before
+        self.users_selection = users_selection
         while not self.graph_iterator.stop:
             graph = self.graph_iterator.next()
             graph_data = self._call_metric_function(self.connection_type, graph, users_selection=users_selection)
@@ -116,50 +152,82 @@ class Metrics:
         if self.value == self.NEIGHBORHOOD_QUALITY:
             return self._neighborhood_composition(connection_type, graph, users_selection=users_selection, percent=True)
 
-        # if self.value is self.COMPOSITION_NEIGHBORS_COUNT:
-        #     return self._neighborhood_composition(connection_type, graph, user_id, self.data)
+        # STABILITY
+        if self.value == self.NEIGHBORS_PER_INTERVAL:
+            return self._neighbors_per_interval(connection_type, graph)
+        if self.value == self.DEGREE_BETWEEN_INTERVALS_DIFFERENCE:
+            return self._count_difference(connection_type, graph)
+        if self.value == self.JACCARD_INDEX_INTERVALS:
+            return self._jaccard_index(connection_type, graph)
+        if self.value == self.NEW_NEIGHBORS:
+            return self._neighbors_change(connection_type, graph)
+        if self.value == self.LOST_NEIGHBORS:
+            return self._neighbors_change(connection_type, graph, False)
 
-        # if self.value is self.NEIGHBORS_COUNT_DIFFERENCE:
-        #     return self._count_difference(connection_type, graph, user_id)
-        # if self.value is self.NEW_NEIGHBORS:
-        #     return self._new_neighbors(connection_type, graph, user_id)
-        # if self.value is self.DIVIDE_NEIGHBORS:
-        #     return connection_type.degree_centrality(graph[0], user_id) \
-        #            / (connection_type.degree_centrality(graph[1], user_id) + 1)
+        # ACTIVITY
+        if self.value == self.POSTS_ADDED:
+            return graph.get_nodes_attribute('posts')
+        if self.value == self.RESPONSES_ADDED:
+            return graph.get_nodes_attribute('responses')
 
         logging.error('Metrics unimplemented: %s', self.value)
 
-    @staticmethod
-    def _count_difference(connection_type, graph, node):
-        neighbors_1 = connection_type.neighbors(graph[0], node)
-        neighbors_2 = connection_type.neighbors(graph[1], node)
+    def _neighbors_per_interval(self, connection_type, graph):
+        if self.static_degree is None:
+            self.static_degree = Metrics(Metrics.DEGREE, connection_type, ITERATOR_STATIC) \
+                .calculate(self.users_ids, self.first_activity_dates, self.none_before, self.users_selection)
+        d = connection_type.degree(graph)
+        return {key: d[key]/self.static_degree[key][0] if self.static_degree[key][0] != 0 else 0 for key in d}
 
-        return (len(neighbors_2) - len(neighbors_1)) / (len(neighbors_2) + 1)
+    @staticmethod
+    def _count_difference(connection_type, graph):
+        degree_1 = connection_type.degree(graph[0])
+        degree_2 = connection_type.degree(graph[1])
+        try:
+            keys = set(degree_2.keys()).intersection(degree_1.keys())
+            r = {key: (degree_2[key] - degree_1[key])/(degree_2[key] + 1) for key in keys}
+        except Exception as e:
+            print('Exception:', e)
+            return None
+        return r
 
     @staticmethod
     def _jaccard_index(connection_type, graph):
-        jaccard_index = {}
-        if not isinstance(graph, list):
-            graph = [graph, graph]
-        for node in set(graph[0].nodes).union(set(graph[1].nodes)):
-            neighbors_1 = connection_type[0].neighbors(graph[0], node)
-            neighbors_2 = connection_type[1].neighbors(graph[1], node)
-            if len(neighbors_1) == 0 or len(neighbors_2) == 0:
-                jaccard_index[node] = 0
-            else:
-                intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
-                jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
-        return jaccard_index
+        try:
+            jaccard_index = {}
+            if not isinstance(graph, list):
+                graph = [graph, graph]
+            if not isinstance(connection_type, list):
+                connection_type = [connection_type, connection_type]
+            for node in set(graph[0].nodes).union(set(graph[1].nodes)):
+                neighbors_1 = connection_type[0].neighbors(graph[0], node)
+                neighbors_2 = connection_type[1].neighbors(graph[1], node)
+                if len(neighbors_1) == 0 or len(neighbors_2) == 0:
+                    jaccard_index[node] = 0
+                else:
+                    intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
+                    jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
+            return jaccard_index
+        except Exception as e:
+            print(e)
+            print(graph)
 
     @staticmethod
-    def _new_neighbors(connection_type, graph, node):
-        neighbors_1 = connection_type.neighbors(graph[0], node)
-        neighbors_2 = connection_type.neighbors(graph[1], node)
-        if len(neighbors_1) == 0 or len(neighbors_2) == 0:
-            return 0
-        difference = list(set(neighbors_2).difference(set(neighbors_1)))
-        union = list(set(neighbors_1).union(set(neighbors_2)))
-        return len(difference) / len(union)
+    def _neighbors_change(connection_type, graph, new=True):
+        neighbors_1 = connection_type.neighbors(graph[0])
+        neighbors_2 = connection_type.neighbors(graph[1])
+        d = defaultdict()
+        for key in neighbors_1:
+            if len(neighbors_1[key]) == 0 or len(neighbors_2[key]) == 0:
+                d[key] = 0
+            else:
+                if new:
+                    difference = list(set(neighbors_2[key]).difference(set(neighbors_1[key])))
+                else:
+                    difference = list(set(neighbors_1[key]).difference(set(neighbors_2[key])))
+                union = list(set(neighbors_1[key]).union(set(neighbors_2[key])))
+                d[key] = len(difference) / len(union)
+        return d
 
     @staticmethod
     def _neighborhood_composition(connection_type, graph, users_selection, percent=False):

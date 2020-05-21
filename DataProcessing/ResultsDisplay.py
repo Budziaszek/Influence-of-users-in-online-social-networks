@@ -22,16 +22,16 @@ def data_statistics(title, data, stats=None, normalize=False, log_fun=logging.IN
     :param log_fun: function
         Defines logging function.
     """
-    log_fun("Statistics %s (%s)" % title)
+    log_fun("Statistics %s" % title)
 
-    if isinstance(data[list(data.keys())[-1]], list):
-        data = list(chain(*data.values()))
+    data = list(data.values())
 
     if normalize:
         minimum = min(data)
         maximum = max(data)
         data = [(d - minimum) / (maximum - minimum) for d in data]
-    result = Statistics.calculate(list(data), stats)
+
+    result = Statistics.calculate(list(data), stats, log_fun)
     FileWriter.write_dict_to_file(FileWriter.STATISTICS, title + ".txt", result)
 
 
@@ -60,9 +60,8 @@ def distribution_linear(data, n_bins=-1):
     plt.ylabel('Frequency')
     plt.xlabel("Metrics value")
     for key in data:
-
-        r_1 = min(data.values())
-        r_2 = max(data.values())
+        r_1 = min(data[key].values())
+        r_2 = max(data[key].values())
 
         step = (r_2 - r_1) / n_bins if n_bins != -1 else 1
         bins = np.arange(start=r_1, stop=r_2 + 2 * step, step=step)
@@ -74,7 +73,7 @@ def distribution_linear(data, n_bins=-1):
 
 
 # TODO multiple bars
-def histogram(title, data, n_bins, half_open=False, integers=True, step=-1, normalize=False):
+def histogram(title, data, n_bins=10, half_open=False, integers=True, step=-1, normalize=False):
     """
     Plots data histogram.
     :param title: string
@@ -154,4 +153,3 @@ def histogram(title, data, n_bins, half_open=False, integers=True, step=-1, norm
 def show_plots():
     """Displays plots which were prepared"""
     plt.show()
-

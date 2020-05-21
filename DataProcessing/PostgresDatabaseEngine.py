@@ -106,6 +106,35 @@ class PostgresDatabaseEngine(DatabaseEngine):
     def get_dates_range(self, column):
         return self.execute("SELECT min(date), max(date) FROM " + column).pop()
 
+    def get_posts(self, day_start, day_end):
+        # return self.execute("""SELECT a.id,
+        #                        (SELECT count(*)
+        #                         FROM posts p
+        #                         WHERE p.author_id = a.id
+        #                         AND p.date BETWEEN """
+        #                     + "'" + str(day_start) + "' and '" + str(day_end) + "'"
+        #                                                                         ") FROM authors a")
+        return self.execute("""SELECT p.author_id
+                                        FROM posts p 
+                                        WHERE p.date BETWEEN """
+                            + "'" + str(day_start) + "' and '" + str(day_end) + "'")
+
+    def get_responses(self, day_start, day_end):
+        # return self.execute("""SELECT a.id,
+        #                        (SELECT count(*)
+        #                         FROM comments c
+        #                         WHERE c.author_id = a.id
+        #                         AND c.date BETWEEN """
+        #                     + "'" + str(day_start) + "' and '" + str(day_end) + "'"
+        #                                                                         ") FROM authors a")
+        return self.execute("""SELECT p.author_id
+                                        FROM comments c
+                                        INNER JOIN posts p 
+                                        ON c.post_id = p.id 
+                                        WHERE c.date BETWEEN """
+                            + "'" + str(day_start) + "' and '" + str(day_end) + "'"
+                            + "AND c.author_id=p.author_id")
+
     def get_responses_to_posts(self, day_start, day_end, include_responses_from_author):
         return self.execute("""SELECT c.author_id, p.author_id 
                                 FROM comments c

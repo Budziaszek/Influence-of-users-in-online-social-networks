@@ -1,3 +1,4 @@
+from collections import defaultdict
 from enum import Enum
 
 
@@ -44,18 +45,18 @@ class GraphConnectionType:
         else:
             return graph.degree(True)
 
-    def neighbors(self, graph, node, value=None):
+    def neighbors(self, graph, value=None):
         if value is None:
             value = self.value
-        if not graph.has_node(node):
-            return []
-        if value == self.OUT:
-            return [n for n in graph.successors(node)]
-        elif value == self.IN:
-            return [n for n in graph.predecessors(node)]
-        # elif value == self.IN_OUT.value:
-        #     return list(set([n for n in graph.successors(node)]).union([n for n in graph.predecessors(node)]))
-        return []
+        d = defaultdict(list)
+        for node in graph.nodes:
+            if not graph.has_node(node):
+                d[node] = []
+            elif value == self.OUT:
+                d[node] = [n for n in graph.successors(node)]
+            elif value == self.IN:
+                d[node] = [n for n in graph.predecessors(node)]
+        return d
 
     def connections(self, graph, node):
         if not graph.has_node(node):
