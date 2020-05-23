@@ -111,4 +111,21 @@ class SocialNetworkGraph:
              for n in self._G.nodes}
         return C
 
+    def jaccard_index_neighborhoods(self):
+        return dict(self._jaccard_index_neighborhoods_iter())
+
+    def _jaccard_index_neighborhoods_iter(self):
+        """ Return an iterator of (node, jaccard_index).
+        """
+        for node in self._G.nodes:
+            pred = set(self._G.predecessors(node))
+            succ = set(self._G.successors(node))
+            overlap = pred & succ
+
+            if len(pred) == 0 or len(succ) == 0:
+                yield (node, 0)
+            else:
+                jaccard_index = len(overlap)/(len(pred) + len(succ) - len(overlap))
+                yield (node, jaccard_index)
+
 

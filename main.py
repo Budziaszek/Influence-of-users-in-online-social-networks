@@ -4,7 +4,6 @@ import sys
 
 from App import ManagerApp
 
-
 logging.basicConfig(level=logging.INFO)
 
 app = QApplication(sys.argv)

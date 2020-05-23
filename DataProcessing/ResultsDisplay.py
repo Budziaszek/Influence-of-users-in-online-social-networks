@@ -1,6 +1,12 @@
 import logging
 import math
+import operator
+import random
+from collections import defaultdict
 from itertools import chain
+
+from matplotlib import rcParams
+from matplotlib.ticker import PercentFormatter, FuncFormatter
 
 from DataProcessing.FileWriter import FileWriter
 from Metrics.MetricsProcessing.Statistics import Statistics
@@ -72,7 +78,38 @@ def distribution_linear(data, n_bins=-1):
     plt.legend()
 
 
-# TODO multiple bars
+def category_histogram(title, data, category_data, labels, n_bins=10):
+    """
+    Plots data histogram.
+    :param title: string
+        Plot title
+    :param data: dict
+        Data for histogram
+    :param n_bins: int
+        Number of bins
+    :param normalize: boolean
+        True - values will be normalized
+    """
+    categorized_data = defaultdict(list)
+    for key in data:
+        categorized_data[category_data[key]].append(data[key])
+
+    fig, ax = plt.subplots()
+    hist_data = [categorized_data[key] for key in sorted(categorized_data.keys())]
+
+    bins = np.linspace(0, max(data.values()), n_bins)
+
+    ax.hist(hist_data, bins, label=labels[len(labels)-len(hist_data):])
+    plt.legend(loc='upper right', title="Degree in (static)")
+    plt.ylabel('Frequency')
+    plt.xlabel("Metrics value")
+    # plt.title(title)
+    ax.set_xticks(bins)
+    plt.xticks(rotation=90)
+    plt.tight_layout()
+    plt.show()
+
+
 def histogram(title, data, n_bins=10, half_open=False, integers=True, step=-1, normalize=False):
     """
     Plots data histogram.

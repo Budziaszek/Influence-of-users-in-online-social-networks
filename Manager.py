@@ -148,7 +148,16 @@ class Manager:
         """
         self._databaseEngine.drop_column(neighborhood_mode.short() + "_" + metrics.get_name())
 
-    def get_data(self, neighborhood_mode, metrics, cut_down=float("-inf"), cut_up=float("inf"), users_selection=None):
+    def get_category(self, users_selection=None):
+        # Get data
+        data = self._databaseEngine.get_array_value_column("po_in_degree_static")
+        users_selection = data.keys() if users_selection is None else users_selection
+        # Categorize data
+        bins = np.asarray([0, 10, 100, 1000])
+        return {k: np.digitize([v], bins, right=True)[0] for k, v in data.items() if k in users_selection}
+
+    def get_data(self, neighborhood_mode, metrics, fun=None,
+                 cut_down=float("-inf"), cut_up=float("inf"), users_selection=None):
         """
          :param neighborhood_mode: NeighborhoodMode
             Neighborhood mode definition
@@ -164,7 +173,7 @@ class Manager:
             Dictionary of ids and metrics values.
         """
         # Get data
-        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name())
+        data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(), fun)
         users_selection = data.keys() if users_selection is None else users_selection
         # Cut data
         return {k: v for k, v in data.items() if cut_down < v < cut_up and k in users_selection}
@@ -889,7 +898,6 @@ class Manager:
         print("TU")
         axs.set_ylim([-2, 2 * len(points) + 2])
         axs.yaxis.set_visible(False)
-        print("NEXT")
 
         for item in axs.get_xticklabels():
             item.set_fontsize(6)

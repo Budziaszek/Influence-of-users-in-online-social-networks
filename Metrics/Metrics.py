@@ -48,6 +48,7 @@ class Metrics:
     # ACTIVITY
     POSTS_ADDED = 'posts_added'
     RESPONSES_ADDED = 'responses_added'
+    RESPONSES_PER_POST_ADDED = 'responses_per_post_added'
 
     METRICS_LIST = [
         DEGREE,
@@ -74,6 +75,7 @@ class Metrics:
 
         POSTS_ADDED,
         RESPONSES_ADDED,
+        RESPONSES_PER_POST_ADDED,
     ]
 
     # TODO PageRank
@@ -98,8 +100,11 @@ class Metrics:
         self.users_selection = None
         self.first_activity_dates = None
         self.static_degree = None
-        if not isinstance(connection_type, list) and self.value is self.JACCARD_INDEX_NEIGHBORS:
-            self.connection_type = [connection_type, connection_type]
+        if not isinstance(connection_type, list):
+            if self.value == self.JACCARD_INDEX_NEIGHBORS:
+                self.connection_type = [CONNECTION_IN, CONNECTION_OUT]
+            if self.value == self.JACCARD_INDEX_INTERVALS:
+                self.connection_type = [connection_type, connection_type]
 
     def calculate(self, users_ids, first_activity_dates, none_before=False, users_selection=None):
         data = defaultdict(list)
@@ -109,6 +114,7 @@ class Metrics:
         self.none_before = none_before
         self.users_selection = users_selection
         while not self.graph_iterator.stop:
+            print("Next")
             graph = self.graph_iterator.next()
             graph_data = self._call_metric_function(self.connection_type, graph, users_selection=users_selection)
             end = graph[1].end_day if isinstance(graph, list) else graph.end_day
@@ -146,7 +152,7 @@ class Metrics:
         if self.value == self.RECIPROCITY:
             return graph.reciprocity()
         if self.value == self.JACCARD_INDEX_NEIGHBORS:
-            return self._jaccard_index(connection_type, graph)
+            return graph.jaccard_index_neighborhoods()
         if self.value == self.NEIGHBORHOOD_DENSITY:
             return connection_type.density(graph)
         if self.value == self.NEIGHBORHOOD_QUALITY:
@@ -169,6 +175,11 @@ class Metrics:
             return graph.get_nodes_attribute('posts')
         if self.value == self.RESPONSES_ADDED:
             return graph.get_nodes_attribute('responses')
+        if self.value == self.RESPONSES_PER_POST_ADDED:
+            p = graph.get_nodes_attribute('posts')
+            r = graph.get_nodes_attribute('responses')
+            return {k: r[k]/p[k] if k in r and p[k] > 0 else 0 for k in p}
+
 
         logging.error('Metrics unimplemented: %s', self.value)
 
@@ -196,17 +207,23 @@ class Metrics:
         try:
             jaccard_index = {}
             if not isinstance(graph, list):
+                nodes = graph.nodes
                 graph = [graph, graph]
+            else:
+                nodes = set(graph[0].nodes).union(set(graph[1].nodes))
             if not isinstance(connection_type, list):
                 connection_type = [connection_type, connection_type]
-            for node in set(graph[0].nodes).union(set(graph[1].nodes)):
+            for node in nodes:
                 neighbors_1 = connection_type[0].neighbors(graph[0], node)
-                neighbors_2 = connection_type[1].neighbors(graph[1], node)
-                if len(neighbors_1) == 0 or len(neighbors_2) == 0:
+                if len(neighbors_1) == 0:
                     jaccard_index[node] = 0
-                else:
-                    intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
-                    jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
+                    continue
+                neighbors_2 = connection_type[1].neighbors(graph[1], node)
+                if len(neighbors_2) == 0:
+                    jaccard_index[node] = 0
+                    continue
+                intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
+                jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
             return jaccard_index
         except Exception as e:
             print(e)

@@ -13,7 +13,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.uic.properties import QtCore
 
-from DataProcessing.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram
+from DataProcessing.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram, \
+    category_histogram
 from Manager import Manager
 from Metrics.Metrics import Metrics
 from Metrics.config import neighborhood_quality_in, neighborhood_quality_out, statistics_functions, \
@@ -81,6 +82,7 @@ class ManagerApp(QWidget):
         self.create_button("Calculate", self.calculate)
         self.create_button("Display", self.display)
         self.create_button("Histogram", self.histogram)
+        self.create_button("Category Histogram", self.category_histogram)
         self.create_button("Line histogram", self.distribution_line)
         self.create_button("Statistics", self.statistics)
         self.create_button("Correlation", self.correlation)
@@ -148,6 +150,8 @@ class ManagerApp(QWidget):
             return max
         elif s == 'min':
             return min
+        elif s == 'median':
+            return statistics.median
 
     @staticmethod
     def get_single_metrics_definition(item, stats=False):
@@ -170,18 +174,18 @@ class ManagerApp(QWidget):
             sleep(1.0)
 
     def calculate(self):
-        # try:
-        self.wait_for_graphs()
-        for value in self.get_metrics_definitions():
-            self.log_output.append('Calculating ' + value.get_name() + "...")
-            self.executor.submit(fn=self.manager.calculate,
-                                 metrics=value,
-                                 condition_fun=without_nan,
-                                 log_fun=self.log_output.append,
-                                 )
+        try:
+            self.wait_for_graphs()
+            for value in self.get_metrics_definitions():
+                self.log_output.append('Calculating ' + value.get_name() + "...")
+                self.executor.submit(fn=self.manager.calculate,
+                                     metrics=value,
+                                     condition_fun=without_nan,
+                                     log_fun=self.log_output.append,
+                                     )
 
-    # except Exception as e:
-    #     self.log_output.append('Exception: ' + str(e))
+        except Exception as e:
+            self.log_output.append('Exception: ' + str(e))
 
     def histogram(self):
         try:
@@ -198,14 +202,42 @@ class ManagerApp(QWidget):
                               data=self.manager.get_data(
                                   neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
                                   metrics=value,
+                                  users_selection=self.users_selection,
                                   cut_down=float(range_start) if range_start != '' else float("-inf"),
                                   cut_up=float(range_end) if range_end != '' else float("inf")),
-                              n_bins=float(n_bins) if n_bins != '' else 10,
+                              n_bins=int(n_bins) if n_bins != '' else 10,
                               half_open=False,
                               integers=True,
                               step=float(step) if step != '' else -1,
                               normalize=False
                               )
+                show_plots()
+        except Exception as e:
+            self.log_output.append('Exception: ' + str(e))
+
+    def category_histogram(self):
+        try:
+            self.options_window = OptionsWindow(parent=self, text='Histogram options',
+                                                range_start=True,
+                                                range_end=True,
+                                                n_bins=True,
+                                                step=True)
+            category_data = self.manager.get_category(self.users_selection)
+            if self.options_window.exec_():
+                range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
+                for value in self.get_metrics_definitions():
+                    self.log_output.append('Histogram for ' + value.get_name() + ".")
+                    category_histogram(title=value.get_name(),
+                                       category_data=category_data,
+                                       labels=["0", "1-10", "11-100", "101-1000", ">1000"],
+                                       data=self.manager.get_data(
+                                           neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
+                                           metrics=value,
+                                           users_selection=self.users_selection,
+                                           cut_down=float(range_start) if range_start != '' else float("-inf"),
+                                           cut_up=float(range_end) if range_end != '' else float("inf")),
+                                       n_bins=int(n_bins) if n_bins != '' else 10,
+                                       )
                 show_plots()
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
@@ -250,11 +282,13 @@ class ManagerApp(QWidget):
             #             values_start=float(range_start) if range_start != '' else float("-inf"),
             #             values_stop=float(range_end) if range_end != '' else float("inf"))
             #
-            for value in self.get_metrics_definitions():
-                self.log_output.append('Statistics for ' + value.get_name() + " (saved in output/data_statistics).")
+            for value in self.get_metrics_definitions(True):
+                self.log_output.append('Statistics for ' + value[0].get_name() + " (saved in output/data_statistics).")
                 data_statistics(
-                    title=value.get_name(),
-                    data=self.manager.get_data(neighborhood_mode=self.neighborhood_mode, metrics=value,
+                    title=value[0].get_name() + ("_" + value[1].__name__) if value[1] is not None else '',
+                    data=self.manager.get_data(neighborhood_mode=self.neighborhood_mode,
+                                               metrics=value[0],
+                                               fun=value[1],
                                                users_selection=self.users_selection),
                     normalize=False,
                     log_fun=self.log_output.append,
@@ -446,6 +480,7 @@ class WindowMetricsSelection(QWidget):
             self.stats.addItem('mode')
             self.stats.addItem('max')
             self.stats.addItem('min')
+            self.stats.addItem('median')
             layout.addWidget(self.stats)
 
         self.button_add = QPushButton('Add')

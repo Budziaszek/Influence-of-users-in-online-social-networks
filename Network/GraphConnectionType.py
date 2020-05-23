@@ -7,19 +7,14 @@ class GraphConnectionType:
 
     IN = "in"
     OUT = "out"
-    IN_OUT = "in+out"
 
     CONNECTION_TYPES = [
         IN,
         OUT,
-        # IN_OUT
     ]
 
     def __init__(self, value):
         self.value = value
-
-    def old_degree_centrality(self, graph, node):
-        return len(self.neighbors(graph, node))
 
     def degree(self, graph):
         if self.value == self.IN:
@@ -45,56 +40,19 @@ class GraphConnectionType:
         else:
             return graph.degree(True)
 
-    def neighbors(self, graph, value=None):
-        if value is None:
-            value = self.value
+    def neighbors(self, graph):
         d = defaultdict(list)
         for node in graph.nodes:
             if not graph.has_node(node):
                 d[node] = []
-            elif value == self.OUT:
-                d[node] = [n for n in graph.successors(node)]
-            elif value == self.IN:
-                d[node] = [n for n in graph.predecessors(node)]
+            elif self.value == self.OUT:
+                d[node] = graph.successors(node)
+            elif self.value == self.IN:
+                d[node] = graph.predecessors(node)
         return d
-
-    def connections(self, graph, node):
-        if not graph.has_node(node):
-            return []
-        if self.value == self.OUT:
-            return [graph[u][v][graph.nodes] for u, v in graph.out_edges(node)]
-        elif self.value == self.IN:
-            return [graph[u][v]['weight'] for u, v in graph.in_edges(node)]
-        else:
-            return []
 
     def density(self, graph):
         return graph.density(graph.successors if self.value == self.OUT else graph.predecessors)
-
-    def intersection(self, graph_1, graph_2, node):
-        neighbors_graph_1 = self.neighbors(graph_1, node)
-        neighbors_graph_2 = self.neighbors(graph_2, node)
-        if (len(neighbors_graph_1) + len(neighbors_graph_2)) == 0:
-            return 0
-        return list(set(neighbors_graph_1).intersection(set(neighbors_graph_2)))
-
-    def union(self, graph_1, graph_2, node):
-        neighbors_graph_1 = self.neighbors(graph_1, node)
-        neighbors_graph_2 = self.neighbors(graph_2, node)
-        if (len(neighbors_graph_1) + len(neighbors_graph_2)) == 0:
-            return 0
-        return list(set(neighbors_graph_1).union(set(neighbors_graph_2)))
-
-    def part_of_neighborhood(self, graph, node):
-        neighbors_in = self.neighbors(graph, node, self.IN)
-        neighbors_out = self.neighbors(graph, node, self.OUT)
-        union = list(set(neighbors_in).union(set(neighbors_out)))
-        if len(union) == 0:
-            return 0
-        elif self.value == self.IN:
-            return len(neighbors_in) / len(union)
-        elif self.value == self.OUT:
-            return len(neighbors_out) / len(union)
 
     def eigenvector_centrality(self, graph, weight=False):
         if self.value == self.IN:

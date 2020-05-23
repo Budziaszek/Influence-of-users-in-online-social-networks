@@ -34,15 +34,16 @@ class GraphIterator:
         dynamic_count = self.graph_mode.count(GraphIterator.ITERATOR.DYNAMIC)
         dynamic_curr_next_count = self.graph_mode.count(GraphIterator.ITERATOR.DYNAMIC_CURR_NEXT)
         if dynamic_count + dynamic_curr_next_count > 1:
-            raise Exception("Incorrect GraphIterator neighborhood_mode configuration. Only one type of dynamic neighborhood_mode is allowed.")
+            raise Exception("""Incorrect GraphIterator neighborhood_mode configuration. 
+                                Only one type of dynamic neighborhood_mode is allowed.""")
         graphs = []
-        for neighborhood_mode in self.graph_mode:
-            if neighborhood_mode == self.ITERATOR.DYNAMIC:
+        for mode in self.graph_mode:
+            if mode == self.ITERATOR.DYNAMIC:
                 graphs.append(GraphIterator.dynamic_graphs[self.current_id])
                 self.current_id += 1
-            elif neighborhood_mode == self.ITERATOR.STATIC:
+            elif mode == self.ITERATOR.STATIC:
                 graphs.append(GraphIterator.static_graph)
-            elif neighborhood_mode == self.ITERATOR.DYNAMIC_CURR_NEXT:
+            elif mode == self.ITERATOR.DYNAMIC_CURR_NEXT:
                 graphs.extend([GraphIterator.dynamic_graphs[self.current_id],
                                GraphIterator.dynamic_graphs[self.current_id + 1]])
                 self.current_id += 1
@@ -56,5 +57,3 @@ class GraphIterator:
         self.stop = False
         self.current_id = 0
         self.graph_mode = self._graph_mode
-
-
