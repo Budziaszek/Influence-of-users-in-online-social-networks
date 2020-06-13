@@ -23,7 +23,6 @@ class SocialNetworkGraph:
             self._G.add_edge(*edge, weight=int(0 if data is None else data['weight']) + 1)
 
     def add_attribute(self, name, data):
-        print(data)
         nx.set_node_attributes(self._G, data, name)
 
     def get_nodes_attribute(self, attr):
@@ -31,9 +30,13 @@ class SocialNetworkGraph:
         return d
 
     def successors(self, node):
+        if node not in self._G.nodes:
+            return []
         return self._G.successors(node)
 
     def predecessors(self, node):
+        if node not in self._G.nodes:
+            return []
         return self._G.predecessors(node)
 
     def has_node(self, node):
@@ -120,12 +123,48 @@ class SocialNetworkGraph:
         for node in self._G.nodes:
             pred = set(self._G.predecessors(node))
             succ = set(self._G.successors(node))
-            overlap = pred & succ
+            intersection = pred & succ
 
             if len(pred) == 0 or len(succ) == 0:
                 yield (node, 0)
             else:
-                jaccard_index = len(overlap)/(len(pred) + len(succ) - len(overlap))
+                jaccard_index = len(intersection)/(len(pred) + len(succ) - len(intersection))
                 yield (node, jaccard_index)
+
+    def neighborhood_fraction(self, neighbors_function):
+        return dict(self._neighborhood_fraction_iter(neighbors_function))
+
+    def _neighborhood_fraction_iter(self, neighbors_function):
+        """ Return an iterator of (node, neighborhood_fraction).
+        """
+        for node in self._G.nodes:
+            pred = set(self._G.predecessors(node))
+            succ = set(self._G.successors(node))
+            union = pred | succ
+
+            diff = (pred, succ) if neighbors_function == self.predecessors else (succ, pred)
+            difference = diff[0] - diff[1]
+
+            if len(union) == 0:
+                yield (node, 0)
+            else:
+                fraction = len(difference) / len(union)
+                yield (node, fraction)
+
+    def neighborhood_quality(self, neighbors_function, users_selection):
+        return dict(self._neighborhood_quality_iter(neighbors_function, users_selection))
+
+    def _neighborhood_quality_iter(self, neighbors_function, users_selection):
+        """ Return an iterator of (node, neighborhood_quality).
+        """
+        for node in self._G.nodes:
+            neigh = set(neighbors_function(node))
+            intersection = neigh & set(users_selection)
+
+            if len(intersection) == 0:
+                yield (node, 0)
+            else:
+                quality = len(intersection) / len(users_selection)
+                yield (node, quality)
 
 

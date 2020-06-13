@@ -2,6 +2,7 @@ import logging
 
 import psycopg2
 from DataProcessing.DatabaseEngine import DatabaseEngine
+from Utility.Functions import fun_all
 
 
 class PostgresDatabaseEngine(DatabaseEngine):
@@ -16,7 +17,7 @@ class PostgresDatabaseEngine(DatabaseEngine):
             return
         self.cur = self.db.cursor()
 
-    def create_first_activity_date_column(self):
+    def create_activity_date_columns(self):
         if self.cur is not None and not self.does_column_exist("authors", "first_activity_date"):
             self.cur.execute("""ALTER TABLE %s ADD %s date"""
                              % ("authors", "first_activity_date"))
@@ -39,13 +40,36 @@ class PostgresDatabaseEngine(DatabaseEngine):
                 data = self.cur.fetchmany(1000)
                 self.db.commit()
 
+        if self.cur is not None and not self.does_column_exist("authors", "last_activity_date"):
+            self.cur.execute("""ALTER TABLE %s ADD %s date"""
+                             % ("authors", "last_activity_date"))
+            self.cur.execute("""SELECT author_id, date FROM comments
+                            UNION
+                            SELECT author_id, date FROM posts
+                            ORDER BY author_id, date DESC""")
+            tmp_cur = self.db.cursor()
+            data = self.cur.fetchmany(1000)
+            author_id = None
+            while len(data) is not 0:
+                n = 0
+                while n < len(data):
+                    if data[n][0] != author_id:
+                        author_id = data[n][0]
+                        date = data[n][1]
+                        tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s"""
+                                        % ("authors", "last_activity_date", date, author_id))
+                    n = n + 1
+                data = self.cur.fetchmany(1000)
+                self.db.commit()
+
     def drop_column(self, column_name, table="authors"):
         if self.cur is not None:
             self.cur.execute("""ALTER TABLE" %s DROP %s""" % (table, column_name))
             self.db.commit()
 
-    def get_first_activity_date(self):
-        return dict(self.execute("SELECT id, first_activity_date FROM authors"))
+    def get_activity_dates(self):
+        return dict(self.execute("SELECT id, first_activity_date FROM authors")), \
+               dict(self.execute("SELECT id, last_activity_date FROM authors"))
 
     @staticmethod
     def lst2pgarr(alist):
@@ -77,7 +101,7 @@ class PostgresDatabaseEngine(DatabaseEngine):
         if self.cur is not None:
             self.cur.execute("""SELECT id, %s FROM authors ORDER BY id""" % column_name)
             self.db.commit()
-            if fun == "all":
+            if fun == fun_all:
                 return dict(self.cur.fetchall())
             if fun is not None:
                 return {x[0]: fun(x[1]) for x in self.cur.fetchall()}

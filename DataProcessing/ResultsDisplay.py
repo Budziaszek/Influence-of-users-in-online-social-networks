@@ -30,14 +30,19 @@ def data_statistics(title, data, stats=None, normalize=False, log_fun=logging.IN
     """
     log_fun("Statistics %s" % title)
 
-    data = list(data.values())
+    all_data = []
+    for key in data:
+        if not isinstance(data[key], list):
+            all_data.append(data[key])
+        else:
+            all_data.extend(data[key])
 
     if normalize:
-        minimum = min(data)
-        maximum = max(data)
-        data = [(d - minimum) / (maximum - minimum) for d in data]
+        minimum = min(all_data)
+        maximum = max(all_data)
+        all_data = [(d - minimum) / (maximum - minimum) for d in all_data]
 
-    result = Statistics.calculate(list(data), stats, log_fun)
+    result = Statistics.calculate(all_data, stats, log_fun)
     FileWriter.write_dict_to_file(FileWriter.STATISTICS, title + ".txt", result)
 
 
@@ -91,16 +96,26 @@ def category_histogram(title, data, category_data, labels, n_bins=10):
         True - values will be normalized
     """
     categorized_data = defaultdict(list)
+    all_data = []
     for key in data:
-        categorized_data[category_data[key]].append(data[key])
+        if not isinstance(data[key], list):
+            categorized_data[category_data[key]].append(data[key])
+            all_data.append(data[key])
+        else:
+            categorized_data[category_data[key]].extend(data[key])
+            all_data.extend(data[key])
 
     fig, ax = plt.subplots()
     hist_data = [categorized_data[key] for key in sorted(categorized_data.keys())]
 
-    bins = np.linspace(0, max(data.values()), n_bins)
+    bins = np.linspace(0, max(all_data), n_bins)
+    # bins = np.linspace(0, 1, n_bins)
 
-    ax.hist(hist_data, bins, label=labels[len(labels)-len(hist_data):])
-    plt.legend(loc='upper right', title="Degree in (static)")
+    colors = ['#7f7f7f', '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+    ax.hist(hist_data, bins, label=labels[len(labels)-len(hist_data):], color=colors[len(labels)-len(hist_data):])
+    # ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),  ncol=len(hist_data),
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5),
+              title="Degree in (static)")
     plt.ylabel('Frequency')
     plt.xlabel("Metrics value")
     # plt.title(title)
@@ -156,7 +171,7 @@ def histogram(title, data, n_bins=10, half_open=False, integers=True, step=-1, n
     step = (r_2 - r_1) / n_bins if step is -1 else step
     if integers:
         step = math.ceil(step)
-    bins = np.arange(start=r_1, stop=r_2 + step, step=step)
+    bins = np.arange(start=r_1, stop=int(math.ceil(r_2 / step)) * step + step, step=step)
     if half_open:
         bins = np.append(bins[:-1], [r_2])
 

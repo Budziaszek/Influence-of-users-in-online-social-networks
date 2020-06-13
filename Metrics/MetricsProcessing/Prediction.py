@@ -53,8 +53,6 @@ class Prediction:
         data_train = self.data_frame[start:end]
         data_test = self.data_frame[end:end + test_length]
 
-        # print(len(data_original), len(data_train), len(data_test))
-
         series_train = pd.Series(data_train.Original, data_train.index)
         series_original = pd.Series(data_original.Original, data_original.index)
 
@@ -63,25 +61,14 @@ class Prediction:
         for e, p in zip(data_test.Original, predicted):
             error_data.append(error_fun(e, p))
 
-            # if fitted_values is not None:
-            #     result_plot = (series_train.index, fitted_values, data_test.index, predicted)
-            # else:
-
         result_plot = (data_test.index, predicted)
         plot_data = []
         title_data = []
-
-        # plot_data.append((series_original.index, series_original))
-        # title_data.append("Original")
 
         plot_data.append(result_plot)
         title_data.append(fun.__name__)
 
         return fun.__name__, result_plot, series_original, error_data
-        # self.plot("Prediction " + fun.__name__,
-        #           [(series_original.index, series_original),
-        #            result_plot],
-        #           ("Original _data", "Fitted values", "Predicted values"))
 
     @staticmethod
     def exponential_smoothing(series_train, test_length, parameters_version=None):
@@ -131,7 +118,6 @@ class Prediction:
         return fitted_values, predicted
 
     def _update_list_of_stations(self, data):
-        print(self.stations)
         stations_used = [station for station in self.stations]
         for i, station in enumerate(self.stations):
             if len(data[station]) is 0:

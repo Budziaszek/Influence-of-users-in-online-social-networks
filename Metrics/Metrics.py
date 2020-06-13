@@ -1,5 +1,9 @@
 import logging
+import os
+import sys
 from collections import defaultdict
+from statistics import median
+from numpy import percentile
 
 from Network.GraphConnectionType import GraphConnectionType
 from Network.GraphIterator import GraphIterator
@@ -36,6 +40,7 @@ class Metrics:
     NEIGHBORHOOD_DENSITY = "neighborhood_density"
     RECIPROCITY = "reciprocity"
     JACCARD_INDEX_NEIGHBORS = "jaccard_index"
+    NEIGHBORHOOD_FRACTION = "neighborhood_fraction"
     NEIGHBORHOOD_QUALITY = "neighborhood_quality"
 
     # STABILITY
@@ -44,6 +49,10 @@ class Metrics:
     JACCARD_INDEX_INTERVALS = "jaccard_index_intervals"
     NEW_NEIGHBORS = "new_neighbors"
     LOST_NEIGHBORS = "lost_neighbors"
+    NEIGHBORS_MAINTENANCE_MEAN = "neighbors_maintenance_mean"
+    NEIGHBORS_MAINTENANCE_MAX = "neighbors_maintenance_max"
+    NEIGHBORS_MAINTENANCE_MEDIAN = "neighbors_maintenance_median"
+    NEIGHBORS_MAINTENANCE_PERCENTILE_90 = "neighbors_maintenance_percentile_90"
 
     # ACTIVITY
     POSTS_ADDED = 'posts_added'
@@ -65,6 +74,7 @@ class Metrics:
         NEIGHBORHOOD_DENSITY,
         RECIPROCITY,
         JACCARD_INDEX_NEIGHBORS,
+        NEIGHBORHOOD_FRACTION,
         NEIGHBORHOOD_QUALITY,
 
         NEIGHBORS_PER_INTERVAL,
@@ -72,6 +82,10 @@ class Metrics:
         JACCARD_INDEX_INTERVALS,
         NEW_NEIGHBORS,
         LOST_NEIGHBORS,
+        NEIGHBORS_MAINTENANCE_MEAN,
+        NEIGHBORS_MAINTENANCE_MAX,
+        NEIGHBORS_MAINTENANCE_MEDIAN,
+        NEIGHBORS_MAINTENANCE_PERCENTILE_90,
 
         POSTS_ADDED,
         RESPONSES_ADDED,
@@ -99,6 +113,7 @@ class Metrics:
         self.none_before = False
         self.users_selection = None
         self.first_activity_dates = None
+        self.last_activity_dates = None
         self.static_degree = None
         if not isinstance(connection_type, list):
             if self.value == self.JACCARD_INDEX_NEIGHBORS:
@@ -106,24 +121,34 @@ class Metrics:
             if self.value == self.JACCARD_INDEX_INTERVALS:
                 self.connection_type = [connection_type, connection_type]
 
-    def calculate(self, users_ids, first_activity_dates, none_before=False, users_selection=None):
-        data = defaultdict(list)
-        self.graph_iterator.reset()
-        self.users_ids = users_ids
-        self.first_activity_dates = first_activity_dates
-        self.none_before = none_before
-        self.users_selection = users_selection
-        while not self.graph_iterator.stop:
-            print("Next")
-            graph = self.graph_iterator.next()
-            graph_data = self._call_metric_function(self.connection_type, graph, users_selection=users_selection)
-            end = graph[1].end_day if isinstance(graph, list) else graph.end_day
-            for key in users_ids:
-                if first_activity_dates[key] is None or first_activity_dates[key] <= end:
-                    data[key].append(graph_data[key] if key in graph_data else 0)
-                elif none_before:
-                    data[key].append(None)
-        return data
+    def calculate(self, users_ids, first_activity_dates, last_activity_dates, none_before=False, users_selection=None):
+        try:
+            data = defaultdict(list)
+            self.graph_iterator.reset()
+            self.users_ids = users_ids
+            self.first_activity_dates = first_activity_dates
+            # self.last_activity_dates = last_activity_dates
+            self.none_before = none_before
+            self.users_selection = users_selection
+            while not self.graph_iterator.stop:
+                graph = self.graph_iterator.next()
+                graph_data = self._call_metric_function(self.connection_type, graph, users_selection=users_selection)
+                end = graph[1].end_day if isinstance(graph, list) else graph.end_day
+                start = graph[1].start_day if isinstance(graph, list) else graph.start_day
+                for key in users_ids:
+                    if first_activity_dates[key] is None or first_activity_dates[key] <= end:
+                        # or last_activity_dates[key] is None \
+                        # and last_activity_dates[key] >= start):
+                        data[key].append(graph_data[key] if key in graph_data else 0)
+                    elif none_before:
+                        data[key].append(None)
+            return data
+
+        except Exception as e:
+            print('Exception saving:', e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
 
     def _call_metric_function(self, connection_type, graph, users_selection=None):
         # CENTRALITY
@@ -153,10 +178,12 @@ class Metrics:
             return graph.reciprocity()
         if self.value == self.JACCARD_INDEX_NEIGHBORS:
             return graph.jaccard_index_neighborhoods()
+        if self.value == self.NEIGHBORHOOD_FRACTION:
+            return connection_type.neighborhood_fraction(graph)
         if self.value == self.NEIGHBORHOOD_DENSITY:
             return connection_type.density(graph)
         if self.value == self.NEIGHBORHOOD_QUALITY:
-            return self._neighborhood_composition(connection_type, graph, users_selection=users_selection, percent=True)
+            return connection_type.neighborhood_quality(graph, users_selection)
 
         # STABILITY
         if self.value == self.NEIGHBORS_PER_INTERVAL:
@@ -164,11 +191,19 @@ class Metrics:
         if self.value == self.DEGREE_BETWEEN_INTERVALS_DIFFERENCE:
             return self._count_difference(connection_type, graph)
         if self.value == self.JACCARD_INDEX_INTERVALS:
-            return self._jaccard_index(connection_type, graph)
+            return connection_type[0].jaccard_index_intervals(graph[0], graph[1])
         if self.value == self.NEW_NEIGHBORS:
-            return self._neighbors_change(connection_type, graph)
+            return connection_type.neighbors_change(graph[0], graph[1])
         if self.value == self.LOST_NEIGHBORS:
-            return self._neighbors_change(connection_type, graph, False)
+            return connection_type.neighbors_change(graph[0], graph[1], False)
+        if self.value == self.NEIGHBORS_MAINTENANCE_MEAN:
+            return connection_type.neighbors_maintenance(self.first_activity_dates)
+        if self.value == self.NEIGHBORS_MAINTENANCE_MAX:
+            return connection_type.neighbors_maintenance(self.first_activity_dates, fun=max)
+        if self.value == self.NEIGHBORS_MAINTENANCE_MEDIAN:
+            return connection_type.neighbors_maintenance(self.first_activity_dates, fun=median)
+        if self.value == self.NEIGHBORS_MAINTENANCE_PERCENTILE_90:
+            return connection_type.neighbors_maintenance(self.first_activity_dates, fun=percentile, arg=90)
 
         # ACTIVITY
         if self.value == self.POSTS_ADDED:
@@ -180,80 +215,31 @@ class Metrics:
             r = graph.get_nodes_attribute('responses')
             return {k: r[k]/p[k] if k in r and p[k] > 0 else 0 for k in p}
 
-
         logging.error('Metrics unimplemented: %s', self.value)
 
     def _neighbors_per_interval(self, connection_type, graph):
-        if self.static_degree is None:
-            self.static_degree = Metrics(Metrics.DEGREE, connection_type, ITERATOR_STATIC) \
-                .calculate(self.users_ids, self.first_activity_dates, self.none_before, self.users_selection)
-        d = connection_type.degree(graph)
-        return {key: d[key]/self.static_degree[key][0] if self.static_degree[key][0] != 0 else 0 for key in d}
+        try:
+            if self.static_degree is None:
+                self.static_degree = Metrics(Metrics.DEGREE, connection_type, ITERATOR_STATIC) \
+                    .calculate(self.users_ids, self.first_activity_dates, self.last_activity_dates,
+                               self.none_before, self.users_selection)
+            d = connection_type.degree(graph)
+            return {key: d[key]/self.static_degree[key][0] if self.static_degree[key][0] != 0 else 0 for key in d}
+        except Exception as e:
+            print('Exception:', e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
 
     @staticmethod
     def _count_difference(connection_type, graph):
         degree_1 = connection_type.degree(graph[0])
         degree_2 = connection_type.degree(graph[1])
         try:
-            keys = set(degree_2.keys()).intersection(degree_1.keys())
-            r = {key: (degree_2[key] - degree_1[key])/(degree_2[key] + 1) for key in keys}
+            r = {key: abs((degree_2[key] if key in degree_2 else 0) - (degree_1[key] if key in degree_1 else 0))
+                 for key in GraphIterator.static_graph.nodes}
         except Exception as e:
             print('Exception:', e)
             return None
         return r
 
-    @staticmethod
-    def _jaccard_index(connection_type, graph):
-        try:
-            jaccard_index = {}
-            if not isinstance(graph, list):
-                nodes = graph.nodes
-                graph = [graph, graph]
-            else:
-                nodes = set(graph[0].nodes).union(set(graph[1].nodes))
-            if not isinstance(connection_type, list):
-                connection_type = [connection_type, connection_type]
-            for node in nodes:
-                neighbors_1 = connection_type[0].neighbors(graph[0], node)
-                if len(neighbors_1) == 0:
-                    jaccard_index[node] = 0
-                    continue
-                neighbors_2 = connection_type[1].neighbors(graph[1], node)
-                if len(neighbors_2) == 0:
-                    jaccard_index[node] = 0
-                    continue
-                intersection = list(set(neighbors_1).intersection(set(neighbors_2)))
-                jaccard_index[node] = len(intersection) / (len(neighbors_1) + len(neighbors_2) - len(intersection))
-            return jaccard_index
-        except Exception as e:
-            print(e)
-            print(graph)
-
-    @staticmethod
-    def _neighbors_change(connection_type, graph, new=True):
-        neighbors_1 = connection_type.neighbors(graph[0])
-        neighbors_2 = connection_type.neighbors(graph[1])
-        d = defaultdict()
-        for key in neighbors_1:
-            if len(neighbors_1[key]) == 0 or len(neighbors_2[key]) == 0:
-                d[key] = 0
-            else:
-                if new:
-                    difference = list(set(neighbors_2[key]).difference(set(neighbors_1[key])))
-                else:
-                    difference = list(set(neighbors_1[key]).difference(set(neighbors_2[key])))
-                union = list(set(neighbors_1[key]).union(set(neighbors_2[key])))
-                d[key] = len(difference) / len(union)
-        return d
-
-    @staticmethod
-    def _neighborhood_composition(connection_type, graph, users_selection, percent=False):
-        composition = {}
-        for node in graph.nodes:
-            neighbors = list(connection_type.neighbors(graph, node))
-            count = len(set(users_selection).intersection(set(neighbors)))
-            if percent is True:
-                composition[node] = count / len(users_selection) if len(users_selection) > 0 else 0
-            else:
-                composition[node] = count
-        return composition

@@ -22,7 +22,7 @@ from Metrics.config import neighborhood_quality_in, neighborhood_quality_out, st
 from Network.GraphConnectionType import GraphConnectionType
 from Network.GraphIterator import GraphIterator
 from Network.NeighborhoodMode import NeighborhoodMode
-from Utility.Functions import without_nan, max_mode
+from Utility.Functions import without_nan, max_mode, fun_all
 
 # import matplotlib
 matplotlib.use('TkAgg')
@@ -56,6 +56,7 @@ class ManagerApp(QWidget):
         self.load_t = threading.Thread(target=self.manager.check_graphs,
                                        kwargs={'neighborhood_mode': self.neighborhood_mode})
         self.load_t.start()
+        self.category_data = self.manager.get_category(self.users_selection)
         threading.Thread(target=self.check_graphs).start()
 
         # self.manager.plot_overlapping_ranges()
@@ -90,7 +91,8 @@ class ManagerApp(QWidget):
         self.create_button("Table", self.table)
         self.create_button("Agglomerative Clustering", self.agglomerative_clustering)
         self.create_button("K-means", self.k_means)
-        self.create_button("Stability", self.stability)
+        self.create_button("Prediction", self.prediction)
+        #self.create_button("Stability", self.stability)
         self.create_button("Selection", self.selection)
         self.create_button("Clear selection", self.clear_selection)
 
@@ -152,6 +154,8 @@ class ManagerApp(QWidget):
             return min
         elif s == 'median':
             return statistics.median
+        elif s == 'all':
+            return fun_all
 
     @staticmethod
     def get_single_metrics_definition(item, stats=False):
@@ -207,7 +211,7 @@ class ManagerApp(QWidget):
                                   cut_up=float(range_end) if range_end != '' else float("inf")),
                               n_bins=int(n_bins) if n_bins != '' else 10,
                               half_open=False,
-                              integers=True,
+                              integers=False,
                               step=float(step) if step != '' else -1,
                               normalize=False
                               )
@@ -222,17 +226,18 @@ class ManagerApp(QWidget):
                                                 range_end=True,
                                                 n_bins=True,
                                                 step=True)
-            category_data = self.manager.get_category(self.users_selection)
             if self.options_window.exec_():
                 range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
-                for value in self.get_metrics_definitions():
-                    self.log_output.append('Histogram for ' + value.get_name() + ".")
-                    category_histogram(title=value.get_name(),
-                                       category_data=category_data,
+                for value in self.get_metrics_definitions(True):
+                    name = value[0].get_name() + ("_" + value[1].__name__ if value[1] is not None else '')
+                    self.log_output.append('Histogram for ' + name + ".")
+                    category_histogram(title=name,
+                                       category_data=self.category_data,
                                        labels=["0", "1-10", "11-100", "101-1000", ">1000"],
                                        data=self.manager.get_data(
                                            neighborhood_mode=NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS,
-                                           metrics=value,
+                                           metrics=value[0],
+                                           fun=value[1],
                                            users_selection=self.users_selection,
                                            cut_down=float(range_start) if range_start != '' else float("-inf"),
                                            cut_up=float(range_end) if range_end != '' else float("inf")),
@@ -285,7 +290,7 @@ class ManagerApp(QWidget):
             for value in self.get_metrics_definitions(True):
                 self.log_output.append('Statistics for ' + value[0].get_name() + " (saved in output/data_statistics).")
                 data_statistics(
-                    title=value[0].get_name() + ("_" + value[1].__name__) if value[1] is not None else '',
+                    title=value[0].get_name() + ("_" + value[1].__name__ if value[1] is not None else ''),
                     data=self.manager.get_data(neighborhood_mode=self.neighborhood_mode,
                                                metrics=value[0],
                                                fun=value[1],
@@ -361,6 +366,21 @@ class ManagerApp(QWidget):
                                      users_selection=self.users_selection,
                                      log_fun=self.log_output.append,
                                      )
+        except Exception as e:
+            self.log_output.append('Exception: ' + str(e))
+
+    def prediction(self):
+        try:
+            values = self.get_metrics_definitions(True)
+            self.log_output.append('Prediction for ' + str(
+                [value[0].get_name() + ("_" + value[1].__name__ if value[1] is not None else '')
+                 for value in values]) + " (result will be saved in output/prediction).")
+            values = [(self.neighborhood_mode, v[0], 1, v[1]) for v in values]
+            self.executor.submit(self.manager.random_forest_prediction,
+                                 parameters=values,
+                                 users_selection=self.users_selection,
+                                 log_fun=self.log_output.append,
+                                 )
         except Exception as e:
             self.log_output.append('Exception: ' + str(e))
 
@@ -481,6 +501,7 @@ class WindowMetricsSelection(QWidget):
             self.stats.addItem('max')
             self.stats.addItem('min')
             self.stats.addItem('median')
+            self.stats.addItem('all')
             layout.addWidget(self.stats)
 
         self.button_add = QPushButton('Add')
