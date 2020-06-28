@@ -1,5 +1,4 @@
 import logging
-import os
 from statistics import mean, stdev
 import numpy as np
 

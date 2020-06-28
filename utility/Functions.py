@@ -60,6 +60,7 @@ def max_mode(data):
 def fun_all(data):
     return data
 
+
 def make_data_positive(data):
     """
     Adds absolute value of data minimum to each element in order to make data strictly positive.

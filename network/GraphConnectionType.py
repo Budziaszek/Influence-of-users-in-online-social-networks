@@ -1,11 +1,7 @@
-import os
-import sys
-import time
 from collections import defaultdict
-from enum import Enum
 from statistics import mean
 
-from Network.GraphIterator import GraphIterator
+from network.GraphIterator import GraphIterator
 
 
 class GraphConnectionType:

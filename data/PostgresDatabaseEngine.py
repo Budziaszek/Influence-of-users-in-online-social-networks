@@ -1,8 +1,8 @@
 import logging
 
 import psycopg2
-from DataProcessing.DatabaseEngine import DatabaseEngine
-from Utility.Functions import fun_all
+from data.DatabaseEngine import DatabaseEngine
+from utility.Functions import fun_all
 
 
 class PostgresDatabaseEngine(DatabaseEngine):

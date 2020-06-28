@@ -1,11 +1,9 @@
 import statistics
 from statistics import stdev, mean
 
-from Metrics.Metrics import Metrics, CONNECTION_IN, ITERATOR_STATIC, CONNECTION_OUT, ITERATOR_DYNAMIC, CONNECTION_IN_OUT
-from Network.GraphConnectionType import GraphConnectionType
-from Network.GraphIterator import GraphIterator
-from Network.NeighborhoodMode import NeighborhoodMode
-from Utility.Functions import coefficient_of_variation, max_mode
+from metrics.Metrics import Metrics, CONNECTION_IN, ITERATOR_STATIC, CONNECTION_OUT, ITERATOR_DYNAMIC, CONNECTION_IN_OUT
+from network.NeighborhoodMode import NeighborhoodMode
+from utility.Functions import max_mode
 import numpy as np
 
 degree_in_static = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_STATIC)

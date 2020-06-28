@@ -2,39 +2,43 @@ import datetime as dt
 import logging
 import math
 import os
-import pickle
 import sys
 import time
 import warnings
 from collections import defaultdict, Counter
-from itertools import combinations
+from os import path
 from pathlib import Path
-import numpy as np
-import seaborn as sns
-from matplotlib.colors import ListedColormap
-from scipy.cluster.hierarchy import dendrogram
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_log_error
-from sklearn.tree import DecisionTreeClassifier
 
-from statsmodels.tsa.statespace.tools import diff
+import numpy as np
+
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.feature_selection import SelectKBest, f_classif, f_regression
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import classification_report, \
+    confusion_matrix, mean_absolute_error, mean_squared_error, explained_variance_score, max_error, \
+    median_absolute_error, r2_score, accuracy_score, \
+    balanced_accuracy_score, f1_score, plot_confusion_matrix
+from sklearn import tree
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPRegressor
+from sklearn.tree import DecisionTreeRegressor
+
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from statistics import mean, stdev, variance
-from statsmodels.tsa.stattools import adfuller
 import matplotlib.pyplot as plt
 import pandas as pd
+import pickle
 
-from DataProcessing.ResultsDisplay import histogram
-from Metrics.Metrics import Metrics
-from Metrics.MetricsProcessing.Prediction import Prediction
-from Metrics.config import degree_in_static
-from Network.GraphIterator import GraphIterator
-from Utility.Functions import make_data_positive, modify_data, sum_by_key, fun_all
-from Utility.ProgressBar import ProgressBar
-from DataProcessing.PostgresDatabaseEngine import PostgresDatabaseEngine
-from Network.SocialNetworkGraph import SocialNetworkGraph
-from DataProcessing.FileWriter import FileWriter
-from Network.NeighborhoodMode import NeighborhoodMode
+from data.ResultsDisplay import histogram
+from metrics.Metrics import Metrics
+from metrics.config import degree_in_static
+from network.GraphIterator import GraphIterator
+from utility.Functions import modify_data, sum_by_key, fun_all
+from utility.ProgressBar import ProgressBar
+from data.PostgresDatabaseEngine import PostgresDatabaseEngine
+from network.SocialNetworkGraph import SocialNetworkGraph
+from data.FileWriter import FileWriter
+from network.NeighborhoodMode import NeighborhoodMode
 
 
 class Manager:
@@ -94,7 +98,7 @@ class Manager:
 
     def calculate(self, metrics, condition_fun=None, log_fun=logging.info):
         """
-        Calculated metrics for current neighborhood_mode (self.neighborhood_mode) and saves result to database.
+        Calculated Metrics for current neighborhood_mode (self.neighborhood_mode) and saves result to database.
         :param metrics: Metrics
             Metrics definition
         :param condition_fun: function
@@ -146,6 +150,11 @@ class Manager:
         bins = np.asarray([0, 10, 100, 1000])
         return {k: np.digitize([v], bins, right=True)[0] for k, v in data.items() if k in users_selection}
 
+    def get_category_for_data(self, data):
+        # Categorize data
+        bins = [0, 1, 50, 100, 300, 500, 1000]
+        return [np.digitize(d, bins, right=True) for d in data]
+
     def get_data(self, neighborhood_mode, metrics, fun=None,
                  cut_down=float("-inf"), cut_up=float("inf"), users_selection=None):
         """
@@ -160,7 +169,7 @@ class Manager:
         :param users_selection:
             Accepted users ids
         :return: dict
-            Dictionary of ids and metrics values.
+            Dictionary of ids and Metrics values.
         """
         # Get data
         data = self._databaseEngine.get_array_value_column(neighborhood_mode.short() + "_" + metrics.get_name(), fun)
@@ -253,7 +262,7 @@ class Manager:
 
     def table(self, neighborhood_mode, metrics, functions, title='table', table_mode="index", log_fun=logging.info):
         """
-        Creates table of metrics values for all users.
+        Creates table of Metrics values for all users.
         :param neighborhood_mode: NeighborhoodMode
             Neighborhood mode definition
         :param metrics: iterable
@@ -265,7 +274,7 @@ class Manager:
         :param table_mode: string
             Defines table values. Included in file title (beelining)
             'index' - index in table
-            'value' - normal metrics value
+            'value' - normal Metrics value
             'name' - user name ordered by index table
         :return:
         """
@@ -313,7 +322,7 @@ class Manager:
 
     def display_between_range(self, neighborhood_mode, metrics, minimum, maximum, stats_fun=None, log_fun=logging.info):
         """
-        Displays users for whom metrics value is between range (minimum, maximum).
+        Displays users for whom Metrics value is between range (minimum, maximum).
         :param neighborhood_mode: NeighborhoodMode
             Neighborhood mode definition
         :param metrics: Metrics
@@ -393,100 +402,588 @@ class Manager:
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
 
-    def random_forest_prediction(self, parameters, users_selection=None, log_fun=logging.info):
-        try:
-            pd.set_option('display.max_columns', None)
+    def prepare_prediction_data(self, parameters_names, users_selection):
+        if path.exists("output\export_dataframe.csv") and False:
+            data = pd.read_csv("output\export_dataframe.csv")
+            return data
 
-            def rmsle(ytrue, ypred):
-                return np.sqrt(mean_squared_log_error(ytrue, ypred))
-
+        else:
             users_selection = self.authors.keys() if not users_selection else users_selection
             users_selection = sorted(users_selection)
+
             # Degree will be predicted
             degree_in_dynamic = self._databaseEngine.get_array_value_column("po_in_degree_dynamic", fun_all)
             additional_data = {}
-            for parameter in parameters:
-                neighborhood_mode = parameter[0]
-                metrics = parameter[1]
-                data_name = neighborhood_mode.short() + "_" + metrics.get_name()
+
+            for data_name in parameters_names:
                 d = self._databaseEngine.get_array_value_column(data_name, fun_all)  # Get all data (dynamic)
                 additional_data[data_name] = d
                 # d if data_name.endswith("dynamic") else {key: [np.nan] + d[key] for key in d}
             data_dict = defaultdict(list)
             for key in users_selection:
+                print(key)
                 # degree_in_dynamic[key] -> array of values for user
                 # We iterate from back (all users have last interval)
+                labels = list(reversed(self.get_category_for_data(degree_in_dynamic[key])))
                 for i, value in enumerate(reversed(degree_in_dynamic[key])):
                     data_dict['Id'].append(key)
                     data_dict['Degree'].append(value)
                     data_dict['Interval'].append(len(GraphIterator.dynamic_graphs) - i)
+                    data_dict['Label'].append(labels[i])
                     for p in additional_data:
-                        if 0 < i - 1 < len(additional_data[p][key]):
-                            data_dict[p].append(additional_data[p][key][i - 1])
+                        k = p + "_0"
+                        r = list(reversed(additional_data[p][key]))
+                        if 0 < i + 1 < len(r):
+                            data_dict[k].append(r[i + 1])
                         else:
-                            data_dict[p].append(np.nan)
+                            data_dict[k].append(np.nan)
             data = pd.DataFrame.from_dict(data_dict)
             data = data.sort_values(by=['Id', 'Interval'])
+            # data.to_csv("output\export_dataframe.csv", index=True, header=True)
 
-            data2 = data.copy()
-            data2['Last_Interval_Degree'] = data2.groupby(['Id'])['Degree'].shift()
-            data2['Last_Interval_Diff'] = data2.groupby(['Id'])['Last_Interval_Degree'].diff()
+            return data
 
-            # for p in additional_data:
-            #     data2[p + "_Diff"] = data2.groupby(['Id'])[p].diff()
+    def feature_selection(self, data, regression="True", label_name='Degree'):
+        # Find most iportant
+        data_test = data.copy()
+        data_test = data_test.dropna()
+        X_test = data_test.drop(label_name, axis=1)
+        Y_test = data_test[label_name]
 
-            data2 = data2.dropna()
-            print(data2.head(20))
+        univariate = SelectKBest(score_func=f_regression if regression else f_classif, k="all")
+        fit = univariate.fit(X_test, Y_test)
 
-            # Baseline score (prediction is equal last known value)
-            print("Baseline")
-            mean_error = []
-            prediction_len = 50
-            unknown_intervals = [i for i in range(max(data2['Interval']) - prediction_len, max(data2['Interval']) + 1)]
-            train = data2[~data2['Interval'].isin(unknown_intervals)]
-            print(data2['Interval'].max(), train['Interval'].max())
-            # Last known interval
-            prediction = train[train['Interval'] == train['Interval'].max()]
-            for unknown_interval in unknown_intervals:
-                test = data2[data2['Interval'] == unknown_interval]
-                # Remove prediction for users who were not active
-                test = test[test['Id'].isin(prediction['Id'])]
-                prediction_test = prediction[prediction['Id'].isin(test['Id'])]
-                print(len(test), len(prediction_test), len(prediction))
-                error = rmsle(test['Degree'].values, prediction_test['Degree'].values)
-                print('\tInterval %d - Error %.5f' % (unknown_interval, error))
-                mean_error.append(error)
-            print('\tMean Error = %.5f' % np.mean(mean_error))
+        # summarize scores
+        np.set_printoptions(precision=3)
+        return sorted(zip(map(lambda x: round(x, 4), fit.scores_), list(X_test.columns)), reverse=True)
 
-            # X = df.drop('Survived', axis=1)
-            # y = df['Survived']
+    def add_previous_interval(self, key, data, n):
+        k = '_'.join(key.split('_')[:-1])
+        data[k + "_" + str(n)] = data.groupby(['Id'])[k + "_" + str(n - 1)].shift()
+        print("Created: ", k + "_" + str(n))
+        return k + "_" + str(n)
+
+    def add_previous_intervals(self, keys, data, n_intervals):
+        for i in range(n_intervals - 1):
+            for key in keys:
+                k = '_'.join(key.split('_')[:-1])
+                print(key, '->', k + "_" + str(i + 1))
+                data[k + "_" + str(i + 1)] = data.groupby(['Id'])[k + "_" + str(i)].shift()
+
+    def print_prediction_regression_errors(self, y_test, y_pred):
+        fun = [
+            explained_variance_score,
+            r2_score,
+            mean_absolute_error,
+            mean_squared_error,
+            # mean_squared_log_error,
+            median_absolute_error,
+            max_error,
+            # mean_poisson_deviance,
+            # mean_gamma_deviance
+        ]
+        for f in fun:
+            print(f.__name__, " = ", f(y_test, y_pred))
+
+    def plot_prediction_regression_errors(self, y_test, y_pred):
+        plt.figure()
+        plt.scatter(y_pred, y_test, alpha=0.1)
+        plt.xlabel("prediction")
+        plt.ylabel("degree")
+
+    def print_prediction_classification_errors(self, y_test, y_pred):
+        fun = [
+            accuracy_score,
+            balanced_accuracy_score,
+            # average_precision_score,
+            # brier_score_loss,
+        ]
+        for f in fun:
+            print(f.__name__, " = ", f(y_test, y_pred))
+        print(f1_score(y_test, y_pred, average='micro'))
+        print(classification_report(y_test, y_pred))
+        print(confusion_matrix(y_test, y_pred))
+
+    def plot_prediction_classification_errors(self, model, X_test, y_test):
+        # labels = ['0-4', '5-9', '10-19', '20-49', '50-99', '100-199', '200-299', '300-399',
+        #           '400-499', '500-599', '600-699', '700-799', '800-899', '900-999', '>=1000']
+        # labels = ['0-9', '10-49', '50-100', '20-49', '100-199', '200-299', '300-399',
+        #           '400-499', '500-599', '600-699', '700-799', '800-899', '900-999', '>=1000']
+        labels = ['0', '1 - 49', '50 - 99', '100 - 299', '300 - 499', '500-1000']
+        disp = plot_confusion_matrix(model, X_test, y_test,
+                                     display_labels=labels,
+                                     cmap=plt.cm.Blues,
+                                     normalize='all')
+        plt.show()
+
+    def baseline(self, data, label_name='Degree'):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        # MEAN RESULT
+        # m = mean(y_train)
+        # baseline_mean_prediction = [m for _ in y_test]
+        # print("Baseline - mean")
+        # self.print_prediction_regression_errors(y_test, baseline_mean_prediction)
+
+        # # LAST KNOWN RESULT
+        baseline_last_prediction = X_test['PO_in_degree_dynamic_0']
+        print("Baseline - last")
+        self.print_prediction_regression_errors(y_test, baseline_last_prediction)
+        self.plot_prediction_regression_errors(y_test, baseline_last_prediction)
+
+    def find_best_features(self, features_ranking, data, model_fun, label_name):
+        try:
+            features = [f[1] for f in features_ranking]
+            scores = []
+            x = []
+            x_ticks_labels = []
+            current_score = -np.infty
+            current_features = []
+            i = 0
+            change_something = True
+            while change_something:
+                change_something = False
+                for feature in features:
+                    if feature not in current_features:
+                        print("Checking... " + feature)
+                        current_features.append(feature)
+                        _, score = model_fun(data[current_features + [label_name]], label_name, False)
+                        print("\t%s (%s)" % (score, current_score))
+                        if score > current_score:
+                            x.append(i)
+                            x_ticks_labels.append("+" + feature)
+                            scores.append(score)
+                            change_something = True
+                            current_score = score
+                            i += 1
+                        else:
+                            current_features.remove(feature)
+
+            print(x_ticks_labels)
+            fig, ax = plt.subplots(1, 1)
+            ax.set(xlabel="parameters change", ylabel="score")
+            ax.set_xticklabels(x_ticks_labels, rotation='vertical')
+            ax.plot(x, scores, linestyle='--', marker='o', color='b')
+
+            return current_features
+        except Exception as e:
+            print("Prediction:", e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+
+    def prediction(self, parameters, users_selection=None, log_fun=logging.info):
+        try:
+            print("Start")
+
+            parameters = ['PO_in_degree_dynamic',
+                          'PO_in_weighted_degree_dynamic',
+                          'PO_in_new_neighbors_dynamic_curr_next',
+                          'PO_in_neighborhood_quality_dynamic',
+                          'PO_out_closeness_centrality_dynamic',
+                          'PO_in_closeness_centrality_dynamic',
+                          'PO_in_neighborhood_density_dynamic',
+                          'PO_in_local_centrality_dynamic',
+                          'PO_in_eigenvector_centrality_dynamic',
+                          'PO_in_weighted_eigenvector_centrality_dynamic',
+                          'PO_in_neighbors_count_difference_dynamic_curr_next',
+                          'PO_in_in_jaccard_index_intervals_dynamic_curr_next',
+                          'PO_out_weighted_degree_dynamic',
+                          'PO_out_neighborhood_density_dynamic',
+                          'PO_in_betweenness_centrality_dynamic',
+                          'PO_in_posts_added_dynamic',
+                          'PO_in_responses_added_dynamic',
+                          'PO_in_lost_neighbors_dynamic_curr_next',
+                          'PO_in_responses_per_post_added_dynamic',
+                          'PO_out_neighborhood_quality_dynamic',
+                          'PO_out_degree_dynamic',
+                          'PO_in_neighborhood_fraction_dynamic',
+                          'PO_out_neighborhood_fraction_dynamic',
+                          'PO_in_reciprocity_dynamic',
+                          'PO_in_out_jaccard_index_dynamic'
+                          ]
+            data = self.prepare_prediction_data(parameters, users_selection)
+            data = data.dropna()
+            print("Data prepared")
+
+            # self.baseline(data)
+            # print("Baseline ready")
+
+            feature_keys = list(data.columns)
+            try:
+                feature_keys.remove('Id')
+                feature_keys.remove('Interval')
+                feature_keys.remove('Degree')
+                feature_keys.remove('Label')
+                feature_keys.remove('Unnamed: 0')
+            except ValueError:
+                pass
+            print("Feature keys prepared")
+
+            # For predicting mean
+            # column_mean = data.groupby(['Id'], as_index=False)['Degree'].rolling(window=4).mean()
+            # data['Degree_mean'] = column_mean.shift(periods=-3).reset_index(level=0, drop=True)
+            # data = data.dropna()
+
+            # Decision tree test
+            # _, _ = self.predict_decision_tree_regressor(data[['PO_in_degree_dynamic_0', 'Degree']], print_result=True)
+            # for feature in feature_keys[1:]:
+            #     _, error = self.predict_decision_tree_regressor(data[[feature, 'PO_in_degree_dynamic_0', 'Degree']],
+            #                                                 print_result=False)
+            #     print(error)
+
+            # Best features using f_regression
+            # f_fun = self.feature_selection(data[feature_keys + ['Degree']], regression="True", label_name='Degree')
+            # print("f_regression: ", f_fun)
+            # best_f_fun = self.find_best_features(f_fun, data[feature_keys + ['Degree']],
+            #                                      self.predict_linear_regression, 'Degree')
+            # print(best_f_fun)
+            # self.predict_random_forest_regressor(data[best_f_fun + ['Degree']])
+            #
+            # print()
+
+            # Best features using tree
+            # t_fun, _ = self.predict_random_forest_regressor(data[feature_keys + ['Degree']], n_estimators=10,
+            #                                                 print_result=False)
+            # print("RandomForestRegressor: ", t_fun)
+            # best_t_fun = self.find_best_features(t_fun, data[feature_keys + ['Degree']],
+            #                                      self.predict_random_forest_regressor, 'Degree')
+            # print(best_t_fun)
+            # self.predict_random_forest_regressor(data[best_t_fun + ['Degree']], n_estimators=10)
+            #
+            # print()
+
+            # Best features using single feature score
+            # single_feature_scores = []
+            # for feature in feature_keys:
+            #     _, score = self.predict_random_forest_regressor(data[[feature] + ['Degree']], n_estimators=10,
+            #                                                     print_result=False)
+            #     single_feature_scores.append(score)
+            # s_fun = sorted(zip(map(lambda x: round(x, 4), single_feature_scores), feature_keys), reverse=True)
+            # print("R2 Score:", s_fun)
+            # best_s_fun = self.find_best_features(s_fun, data[feature_keys + ['Degree']],
+            #                                      self.predict_random_forest_regressor, 'Degree')
+            # print(best_s_fun)
+            # self.predict_random_forest_regressor(data[best_s_fun + ['Degree']], n_estimators=10)
+            #
+            # print("Regression ranking ready")
+
+            # plt.show()
+
+            # Check best number of previous intervals included for selected model parameters
+            features_c_model = ['PO_in_degree_dynamic_0',
+                                'PO_in_new_neighbors_dynamic_curr_next_0',
+                                'PO_in_in_jaccard_index_intervals_dynamic_curr_next_0',
+                                'PO_in_eigenvector_centrality_dynamic_0',
+                                'PO_in_weighted_degree_dynamic_0',
+                                'PO_in_betweenness_centrality_dynamic_0',
+                                'PO_in_neighbors_count_difference_dynamic_curr_next_0',
+                                'PO_in_lost_neighbors_dynamic_curr_next_0',
+                                'PO_in_responses_added_dynamic_0',
+                                'PO_in_responses_per_post_added_dynamic_0',
+                                'PO_in_posts_added_dynamic_0',
+                                'PO_out_neighborhood_density_dynamic_0',
+                                'PO_out_neighborhood_fraction_dynamic_0']
+            # x = []
+            # scores = []
+            # prev_features_c_model = features_c_model.copy()
+            # for i in range(11):
+            #     if i > 0:
+            #         for key in features_c_model:
+            #             prev_features_c_model.append(self.add_previous_interval(key, data, i))
+            #     data = data.dropna()
+            #     _, score = self.predict_random_forest_regressor(data[prev_features_c_model + ['Degree']],
+            #                                                     n_estimators=10, print_result=False)
+            #     scores.append(score)
+            #     print(score)
+            #
+            # fig, ax = plt.subplots(1, 1)
+            # ax.set(xlabel="parameters change", ylabel="score")
+            # ax.plot(x, scores, linestyle='--', marker='o', color='b')
+            # plt.show()
+
+            # features_with_best_prev = features_c_model.copy()
+            # for key in features_c_model:
+            #     features_with_best_prev.append(self.add_previous_interval(key, data, 1))
+            # data = data.dropna()
+            # _, score = self.predict_random_forest_regressor(data[features_with_best_prev + ['Degree']],
+            #                                                 n_estimators=10)
+            #
+            # n_estimators_iter = np.arange(70, 110, 10)
+            # scores = []
+            # for n in n_estimators_iter:
+            #     _, score = self.predict_random_forest_regressor(data[features_with_best_prev + ['Degree']],
+            #                                                     n_estimators=n,
+            #                                                     print_result=True)
+            #     scores.append(score)
+            #     print(score)
+            #
+            # fig, ax = plt.subplots(1, 1)
+            # ax.set(xlabel="parameters change", ylabel="score")
+            # ax.plot(n_estimators_iter, scores, linestyle='--', marker='o', color='b')
+            # plt.show()
+
+            # prev_features_c_model = feature_keys.copy()
+            # for key in features_c_model:
+            #     prev_features_c_model.append(self.add_previous_interval(key, data, 1))
+            # data = data.dropna()
+            # _, score = self.predict_random_forest_regressor(data[prev_features_c_model + ['Degree_mean']],
+            #                                                 n_estimators=100,
+            #                                                 print_result=True,
+            #                                                 label_name='Degree_mean')
+
+            # Classification
+            features_all_model = feature_keys.copy()
+            for key in feature_keys:
+                features_all_model.append(self.add_previous_interval(key, data, 1))
+
+            data = data.dropna()
+            self.predict_random_forest_classifier(data[features_all_model + ['Label']], n_estimators=10)
+            plt.show()
+
+            _, _ = self.predict_test_regressor(data[['PO_in_degree_dynamic_0'] + ['Degree']], n_estimators=10,
+                                                            print_result=True)
+            _, _ = self.predict_test_regressor(data[feature_keys + ['Degree']], n_estimators=10,
+                                                   print_result=True)
+
+            _, _ = self.predict_test_regressor(data[features_c_model + ['Degree']], n_estimators=10,
+                                               print_result=True)
+
+            # Linear regression
+            # features_all_model = features_c_model.copy()
+            # curr_score = 0
+            # score = 1.0
+            # x = []
+            # scores = []
+            # for i in range(5):
+            #     x.append(i+1)
+            #     if i > 0:
+            #         for key in feature_keys:
+            #             features_all_model.append(self.add_previous_interval(key, data, i))
+            #     data = data.dropna()
+            #     _, score = self.predict_linear_regression(data[features_all_model + ['Degree']], n_estimators=10,
+            #                                            print_result=True)
+            #     scores.append(score)
+            #
+            # fig, ax = plt.subplots(1, 1)
+            # ax.set(xlabel="parameters change", ylabel="score")
+            # ax.plot(x, scores, linestyle='--', marker='o', color='b')
+            # plt.show()
+
+            # best_features_reg_model = \
+            #     ['PO_in_degree_dynamic_0',
+            #      'PO_in_weighted_degree_dynamic_0',
+            #      'PO_in_eigenvector_centrality_dynamic_0',
+            #      'PO_in_neighbors_count_difference_dynamic_curr_next_0',
+            #      'PO_in_responses_added_dynamic_0', 'PO_in_closeness_centrality_dynamic_0',
+            #      'PO_in_posts_added_dynamic_0',
+            #      'PO_in_betweenness_centrality_dynamic_0',
+            #      'PO_in_neighborhood_fraction_dynamic_0',
+            #      'PO_in_responses_per_post_added_dynamic_0',
+            #      'PO_in_new_neighbors_dynamic_curr_next_0',
+            #      'PO_out_neighborhood_quality_dynamic_0',
+            #      'PO_out_degree_dynamic_0',
+            #      'PO_in_in_jaccard_index_intervals_dynamic_curr_next_0',
+            #      'PO_out_closeness_centrality_dynamic_0',
+            #      'PO_out_weighted_degree_dynamic_0',
+            #      'PO_out_neighborhood_density_dynamic_0',
+            #      'PO_in_reciprocity_dynamic_0',
+            #      'PO_in_neighborhood_density_dynamic_0',
+            #      'PO_out_neighborhood_fraction_dynamic_0',
+            #      'PO_in_weighted_eigenvector_centrality_dynamic_0',
+            #      'PO_in_lost_neighbors_dynamic_curr_next_0',
+            #      'PO_in_out_jaccard_index_dynamic_0']
+            # print(list(set(feature_keys) - set(best_features_reg_model)))
+            # best_features_reg_model_all = best_features_reg_model.copy()
+            # # for key in best_features_reg_model:
+            # #     best_features_reg_model_all.append(self.add_previous_interval(key, data, 1))
+            # #     best_features_reg_model_all.append(self.add_previous_interval(key, data, 2))
+            # data = data.dropna()
+            # _, score = self.predict_linear_regression(data[best_features_reg_model_all + ['Degree']],
+            #                                           normalize=True,
+            #                                           print_result=True)
+            # _, score = self.predict_test_regressor(data[['PO_in_degree_dynamic_0'] + ['Degree']], print_result=True)
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True)
+
+            # if path.exists("output\export_dataframe-prev.csv"):
+            #     data = pd.read_csv("output\export_dataframe-prev.csv")
+            #     feature_keys = list(data.columns)
+            #     try:
+            #         feature_keys.remove('Id')
+            #         feature_keys.remove('Interval')
+            #         feature_keys.remove('Degree')
+            #         feature_keys.remove('Label')
+            #         feature_keys.remove('Unnamed: 0')
+            #     except ValueError:
+            #         pass
+            #     print("Feature keys prepared")
+            # else:
+            #     feature_keys_prev = feature_keys.copy()
+            #     for key in feature_keys:
+            #         feature_keys_prev.append(self.add_previous_interval(key, data, 1))
+            #         feature_keys_prev.append(self.add_previous_interval(key, data, 2))
+            #     data = data.dropna()
+            #     feature_keys = feature_keys_prev
+            #     data.to_csv("output\export_dataframe-prev.csv", index=True, header=True)
+            # _, score = self.predict_test_regressor(data[features_c_model + ['Degree']], print_result=True, parameter=(200, 100, 50))
+            # _, score = self.predict_test_regressor(data[features_c_model + ['Degree']], print_result=True,
+            #                                        parameter=(200, 500, 100))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True, parameter=(100, 80, 50))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True,
+            #                                        parameter=(200, 100))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True,
+            #                                        parameter=(200, 100, 50))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True,
+            #                                        parameter=(200, 100, 10))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True,
+            #                                        parameter=(100, 20, 10))
+            # _, score = self.predict_test_regressor(data[feature_keys + ['Degree']], print_result=True,
+            #                                        parameter=(100, 50))
+
+            plt.show()
+            #
+            # features_all_model = features_c_model.copy()
+            # x = []
+            # scores = []
+            # for i in range(4):
+            #     x.append(i+1)
+            #     if i > 0:
+            #         for key in feature_keys:
+            #             features_all_model.append(self.add_previous_interval(key, data, i))
+            #     data = data.dropna()
+            #     _, score = self.predict_test_regressor(data[features_all_model + ['Degree']], print_result=True,
+            #                                            parameter=(100,))
+            #     scores.append(score)
+            #
+            # fig, ax = plt.subplots(1, 1)
+            # ax.set(xlabel="parameters change", ylabel="score")
+            # ax.plot(x, scores, linestyle='--', marker='o', color='b')
+            # plt.show()
+
+            # Voting Regressor
+            # feature_keys_prev = features_c_model.copy()
+            # for key in features_c_model:
+            #     feature_keys_prev.append(self.add_previous_interval(key, data, 1))
+            # data = data[feature_keys_prev + ['Degree']]
+            # data = data.dropna()
+            # reg1 = LinearRegression()
+            # reg2 = RandomForestRegressor(n_estimators=50)
+            #
+            # ereg = VotingRegressor(estimators=[('gb', reg1), ('rf', reg2)])
+            # X = data.drop('Degree', axis=1)
+            # y = data['Degree']
             # X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+            # prediction = ereg.fit(X_train, y_train).predict(X_test)
+            # self.print_prediction_regression_errors(y_test, prediction)
+            # self.plot_prediction_regression_errors(y_test, prediction)
+            # plt.show()
 
-            # Decision tree
-            print("Decision tree")
-            mean_error = []
-            xtr = train.drop(['Degree'], axis=1)
-            ytr = train['Degree'].values
-            # Create model
-            mdl = DecisionTreeClassifier()
-            mdl.fit(xtr, ytr)
-            for unknown_interval in unknown_intervals:
-                test = data2[data2['Interval'] == unknown_interval]
 
-                xts = test.drop(['Degree'], axis=1)
-                yts = test['Degree'].values
-
-                prediction = mdl.predict(xts)
-                error = rmsle(yts, prediction)
-                print('\tInterval %d - Error %.5f' % (unknown_interval, error))
-                mean_error.append(error)
-            print('\tMean Error = %.5f' % np.mean(mean_error))
 
         except Exception as e:
             print("Prediction:", e)
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
+
+    def predict_decision_tree_regressor(self, data, label_name='Degree', print_result=True):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        model = DecisionTreeRegressor(max_depth=None, random_state=0)
+        model.fit(X_train, y_train)
+
+        prediction = model.predict(X_test)
+        d = sorted(zip(map(lambda x: round(x, 4), model.feature_importances_), list(X_train.columns)), reverse=True)
+
+        if print_result:
+            print("DecisionTreeRegressor")
+            self.print_prediction_regression_errors(y_test, prediction)
+            self.plot_prediction_regression_errors(y_test, prediction)
+            tree.plot_tree(model, filled=True, max_depth=2)
+            print(d)
+        return d, r2_score(y_test, prediction)
+
+    def predict_linear_regression(self, data, label_name='Degree', print_result=True, normalize=False):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        model = LinearRegression(normalize=normalize)
+        model.fit(X_train, y_train)
+
+        prediction = model.predict(X_test)
+        # d = sorted(zip(map(lambda x: round(x, 4), model.feature_importances_), list(X_train.columns)), reverse=True)
+
+        if print_result:
+            print("TestRegressor")
+            self.print_prediction_regression_errors(y_test, prediction)
+            self.plot_prediction_regression_errors(y_test, prediction)
+            # print(d)
+        return None, r2_score(y_test, prediction)
+
+    def predict_test_regressor(self, data, label_name='Degree', print_result=True, n_estimators=10, parameter=None):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        # model = ensemble.GradientBoostingRegressor(max_depth=None, random_state=0, n_estimators=n_estimators)
+        # model = BayesianRidge()
+        # model = LinearRegression()
+        # model = SVR(verbose=True, kernel=kernel, max_iter=10000) # Couldn't calculate (time consuming)
+        model = MLPRegressor(random_state=1, max_iter=1000, verbose=True, hidden_layer_sizes=parameter)
+        # pickle.dump(model, open(kernel + "_model_svm.sav", 'wb'))
+
+        model.fit(X_train, y_train)
+
+        prediction = model.predict(X_test)
+        # d = sorted(zip(map(lambda x: round(x, 4), model.feature_importances_), list(X_train.columns)), reverse=True)
+
+        if print_result:
+            print("TestRegressor")
+            self.print_prediction_regression_errors(y_test, prediction)
+            self.plot_prediction_regression_errors(y_test, prediction)
+            # print(d)
+        return None, r2_score(y_test, prediction)
+
+    def predict_random_forest_regressor(self, data, label_name='Degree', print_result=True, n_estimators=10):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        model = RandomForestRegressor(max_depth=None, random_state=0, n_estimators=n_estimators, n_jobs=-1)
+        model.fit(X_train, y_train)
+
+        prediction = model.predict(X_test)
+        d = sorted(zip(map(lambda x: round(x, 4), model.feature_importances_), list(X_train.columns)), reverse=True)
+
+        if print_result:
+            print("RandomForestRegressor")
+            self.print_prediction_regression_errors(y_test, prediction)
+            self.plot_prediction_regression_errors(y_test, prediction)
+            print(d)
+        return d, r2_score(y_test, prediction)
+
+    def predict_random_forest_classifier(self, data, label_name='Label', print_result=True, n_estimators=10):
+        X = data.drop(label_name, axis=1)
+        y = data[label_name]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
+
+        model = RandomForestClassifier(max_depth=None, random_state=0, n_estimators=n_estimators, n_jobs=-1)
+        model.fit(X_train, y_train)
+
+        prediction = model.predict(X_test)
+        d = sorted(zip(map(lambda x: round(x, 4), model.feature_importances_), list(X_train.columns)), reverse=True)
+
+        if print_result:
+            print("RandomForestClassifier")
+            self.print_prediction_classification_errors(y_test, prediction)
+            self.plot_prediction_classification_errors(model, X_test, y_test)
+            print(d)
+        return d, r2_score(y_test, prediction)
 
     def k_means(self, n_clusters, parameters, users_selection=None, log_fun=logging.info):
         """
@@ -544,33 +1041,6 @@ class Manager:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
-
-    def predict(self, data, author_id):
-        """
-        Predict time series.
-        :param data: array
-            DataProcessing used in prediction
-        :param author_id: int
-            Author id
-        """
-        plot_data = []
-        title_data = []
-        interesting_ids = [1672, 440, 241, 2177, 797, 3621, 11, 2516]
-        # methods = [Prediction.exponential_smoothing, Prediction.ARIMA]
-        parameters_versions = [i for i in range(3)]
-        data = make_data_positive(diff(data))
-        logging.info("Predict")
-        prediction = Prediction(data, self.authors[author_id])
-        for parameters_version in parameters_versions:
-            result = prediction.predict(0, len(data) - 50, 50, Prediction.exponential_smoothing,
-                                        Prediction.MAPE_error, parameters_version)
-            if len(plot_data) == 0:
-                plot_data.append((result[2].index, result[2]))
-                title_data.append("Original")
-            plot_data.append(result[1])
-            title_data.append(result[0] + str(parameters_version))
-        if self.authors[author_id] in interesting_ids:
-            Prediction.plot("Prediction for " + self.authors[author_id], plot_data, title_data)
 
     @staticmethod
     def calculate_trend(data):
@@ -941,7 +1411,7 @@ class Manager:
             for c in range(n_clusters):
                 plt.plot(sizes_dict[c], label=c + 1)
             plt.legend()
-            plt.show()
+            # plt.show()
 
             # Plot percentage of cluster sizes changes
             counts = pd.DataFrame.from_dict(sizes_dict)
@@ -956,7 +1426,7 @@ class Manager:
             plt.stackplot(range(len(counts[0])), *plot_data, labels=plot_labels)
             plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             plt.margins(0, 0)
-            plt.show()
+            # plt.show()
         except Exception as e:
             print("Save:", e)
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -995,6 +1465,15 @@ class Manager:
                     counts_t[key].append(c[key] if key in c else 0)
             print("transitions counts calculated")
             trans_c = pd.DataFrame.from_dict(counts_t, orient='index')
+
+            # for (columnName, columnData) in trans_c.iteritems():
+            #     print('Colunm Name : ', columnName)
+            #     print('Column Contents : ', columnData.values)
+            #
+            # trans_c['sum'] = trans_c.sum(axis=1)
+            #
+            # trans_c['percents'] = trans_c.div(trans_c.sum(axis=1), axis=1)
+
             if not os.path.exists('output/clustering_dynamic'):
                 os.mkdir('output/clustering_dynamic')
             trans_c.to_csv(r'output/clustering_dynamic/' + timestr + 'user_transitions_counts' + '.txt', index=True,
@@ -1018,7 +1497,7 @@ class Manager:
                 plt.plot(counts_t[key], label=key, color=colors[i % len(colors)])
             plt.legend(ncol=2)
 
-            plt.show()
+            # plt.show()
 
             # Plot percentage of cluster transitions
             counts = pd.DataFrame.from_dict(counts_t)
@@ -1033,7 +1512,7 @@ class Manager:
             plt.stackplot(range(len(counts[list(t_keys)[0]])), *plot_data, labels=plot_labels, colors=colors)
             plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=2)
             plt.margins(0, 0)
-            plt.show()
+            # plt.show()
         except Exception as e:
             print("Save:", e)
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -1417,7 +1896,7 @@ class Manager:
         :param author_id: int
             Id of the author to whom the data refer
         :param data: array (float)
-            Calculated metrics values
+            Calculated Metrics values
         """
         self._databaseEngine.update_array_value_column(column_name, author_id, data)
 

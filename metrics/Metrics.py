@@ -5,8 +5,8 @@ from collections import defaultdict
 from statistics import median
 from numpy import percentile
 
-from Network.GraphConnectionType import GraphConnectionType
-from Network.GraphIterator import GraphIterator
+from network.GraphConnectionType import GraphConnectionType
+from network.GraphIterator import GraphIterator
 
 CONNECTION_IN = GraphConnectionType(GraphConnectionType.IN)
 CONNECTION_OUT = GraphConnectionType(GraphConnectionType.OUT)

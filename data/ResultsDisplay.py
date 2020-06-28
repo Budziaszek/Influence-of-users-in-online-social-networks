@@ -1,22 +1,16 @@
 import logging
 import math
-import operator
-import random
 from collections import defaultdict
-from itertools import chain
 
-from matplotlib import rcParams
-from matplotlib.ticker import PercentFormatter, FuncFormatter
-
-from DataProcessing.FileWriter import FileWriter
-from Metrics.MetricsProcessing.Statistics import Statistics
+from data.FileWriter import FileWriter
+from metrics.Statistics import Statistics
 import matplotlib.pyplot as plt
 import numpy as np
 
 
 def data_statistics(title, data, stats=None, normalize=False, log_fun=logging.INFO):
     """
-    Calculated data_statistics for metrics.
+    Calculated data_statistics for Metrics.
     :param title: string
         Title
     :param data: dict

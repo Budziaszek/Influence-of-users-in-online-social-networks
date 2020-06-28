@@ -3,10 +3,8 @@ import logging
 from PyQt5.QtWidgets import QApplication
 import sys
 
+from manager.App import ManagerApp
 
-
-from App import ManagerApp
-import pandas as pd
 # from matplotlib.colors import ListedColormap
 # import seaborn as sns
 # import matplotlib.pylab as plt
@@ -33,9 +31,19 @@ import pandas as pd
 # print(list(df.loc[10]))
 # print(df)
 
+# import matplotlib.pyplot as plt
+#
+# fig, ax = plt.subplots(1, 1)
+# ax.set(xlabel="parameters change", ylabel="score")
+# ax.plot([1, 2, 3, 4], [0.7963108249689164, 0.8227933062417234, 0.826350941442723, 0.8208551032310785
+#                                    ], linestyle='--', marker='o', color='b')
+# plt.show()
+#
+
 logging.basicConfig(level=logging.INFO)
 
 app = QApplication(sys.argv)
 ex = ManagerApp()
+# ex.prediction()
 sys.exit(app.exec_())
 

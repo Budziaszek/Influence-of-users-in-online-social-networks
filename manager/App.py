@@ -1,28 +1,23 @@
 import logging
 import matplotlib
 import statistics
-import sys
-import _thread
 import threading
 from concurrent.futures.thread import ThreadPoolExecutor
-import matplotlib.pyplot as plt
 from time import sleep
 
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from PyQt5.uic.properties import QtCore
 
-from DataProcessing.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram, \
+from data.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram, \
     category_histogram
-from Manager import Manager
-from Metrics.Metrics import Metrics
-from Metrics.config import neighborhood_quality_in, neighborhood_quality_out, statistics_functions, \
-    clustering_scenario_3, degree_in_static, functions, clustering_scenario_1, clustering_scenario_2
-from Network.GraphConnectionType import GraphConnectionType
-from Network.GraphIterator import GraphIterator
-from Network.NeighborhoodMode import NeighborhoodMode
-from Utility.Functions import without_nan, max_mode, fun_all
+from manager.Manager import Manager
+from metrics.Metrics import Metrics
+from metrics.config import clustering_scenario_3, functions, clustering_scenario_1, clustering_scenario_2
+from network.GraphConnectionType import GraphConnectionType
+from network.GraphIterator import GraphIterator
+from network.NeighborhoodMode import NeighborhoodMode
+from utility.Functions import without_nan, max_mode, fun_all
 
 # import matplotlib
 matplotlib.use('TkAgg')
@@ -76,7 +71,7 @@ class ManagerApp(QWidget):
         vbox_metrics.addWidget(self.metrics_list_unactivated)
         self.metrics_list_unactivated.clicked.connect(self.clicked_unactivated)
 
-        button_add_metrics = QPushButton("Add metrics")
+        button_add_metrics = QPushButton("Add Metrics")
         vbox_metrics.addWidget(button_add_metrics)
         button_add_metrics.clicked.connect(self.add_metrics)
 
@@ -92,7 +87,6 @@ class ManagerApp(QWidget):
         self.create_button("Agglomerative Clustering", self.agglomerative_clustering)
         self.create_button("K-means", self.k_means)
         self.create_button("Prediction", self.prediction)
-        #self.create_button("Stability", self.stability)
         self.create_button("Selection", self.selection)
         self.create_button("Clear selection", self.clear_selection)
 
@@ -279,11 +273,11 @@ class ManagerApp(QWidget):
             #                                     scenario=True,
             #                                     scenario_sel=scenarios)
             # if self.options_window.exec_():
-            #     range_start, range_end, n_bins, step, metrics, scenario = self.options_window.get_values()
+            #     range_start, range_end, n_bins, step, Metrics, scenario = self.options_window.get_values()
             #     if scenario == scenarios[1]:
             #         users = self.manager.select_users(
             #             neighborhood_mode=self.neighborhood_mode,
-            #             metrics=ManagerApp.get_single_metrics_definition(metrics),
+            #             Metrics=ManagerApp.get_single_metrics_definition(Metrics),
             #             values_start=float(range_start) if range_start != '' else float("-inf"),
             #             values_stop=float(range_end) if range_end != '' else float("inf"))
             #
@@ -376,7 +370,7 @@ class ManagerApp(QWidget):
                 [value[0].get_name() + ("_" + value[1].__name__ if value[1] is not None else '')
                  for value in values]) + " (result will be saved in output/prediction).")
             values = [(self.neighborhood_mode, v[0], 1, v[1]) for v in values]
-            self.executor.submit(self.manager.random_forest_prediction,
+            self.executor.submit(self.manager.prediction,
                                  parameters=values,
                                  users_selection=self.users_selection,
                                  log_fun=self.log_output.append,
