@@ -1,3 +1,6 @@
+Plik sql można pobrać tutaj:
+https://www.dropbox.com/s/x2nwt0buls5ex47/salon24.zip?dl=0
+
 Najpierw trzeba stworzyc uzytkownika o parametrach
 user: sna_user
 password: sna_password
