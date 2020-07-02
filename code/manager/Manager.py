@@ -29,16 +29,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pickle
 
-from data.ResultsDisplay import histogram
-from metrics.Metrics import Metrics
-from metrics.config import degree_in_static
-from network.GraphIterator import GraphIterator
-from utility.Functions import modify_data, sum_by_key, fun_all
-from utility.ProgressBar import ProgressBar
-from data.PostgresDatabaseEngine import PostgresDatabaseEngine
-from network.SocialNetworkGraph import SocialNetworkGraph
-from data.FileWriter import FileWriter
-from network.NeighborhoodMode import NeighborhoodMode
+from code.data.ResultsDisplay import histogram
+from code.metrics.Metrics import Metrics
+from code.metrics.config import degree_in_static
+from code.network.GraphIterator import GraphIterator
+from code.utility.Functions import modify_data, sum_by_key, fun_all
+from code.utility.ProgressBar import ProgressBar
+from code.data.PostgresDatabaseEngine import PostgresDatabaseEngine
+from code.network.SocialNetworkGraph import SocialNetworkGraph
+from code.data.FileWriter import FileWriter
+from code.network.NeighborhoodMode import NeighborhoodMode
 
 
 class Manager:
@@ -575,6 +575,10 @@ class Manager:
             print(exc_type, fname, exc_tb.tb_lineno)
 
     def prediction(self, parameters, users_selection=None, log_fun=logging.info):
+        """
+            Warning! This function is not finished. It can not be configured by parameters argument.
+            To use different methods uncomment relevant code lines.
+            """
         try:
             print("Start")
 

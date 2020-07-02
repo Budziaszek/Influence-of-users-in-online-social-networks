@@ -1,9 +1,10 @@
 import statistics
 from statistics import stdev, mean
 
-from metrics.Metrics import Metrics, CONNECTION_IN, ITERATOR_STATIC, CONNECTION_OUT, ITERATOR_DYNAMIC, CONNECTION_IN_OUT
-from network.NeighborhoodMode import NeighborhoodMode
-from utility.Functions import max_mode
+from code.metrics.Metrics import Metrics, CONNECTION_IN, ITERATOR_STATIC, CONNECTION_OUT, ITERATOR_DYNAMIC, \
+    CONNECTION_IN_OUT
+from code.network.NeighborhoodMode import NeighborhoodMode
+from code.utility.Functions import max_mode
 import numpy as np
 
 degree_in_static = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_STATIC)
@@ -16,7 +17,7 @@ katz_centrality_in_static = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITER
 weighted_katz_centrality_in_static = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 closeness_centrality_in_static = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 betweenness_centrality_in_static = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
-local_centrality_in_static =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
+local_centrality_in_static = Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_STATIC)
 
 degree_in_dynamic = Metrics(Metrics.DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
 weighted_degree_in_dynamic = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_IN, ITERATOR_DYNAMIC)
@@ -28,7 +29,7 @@ katz_centrality_in_dynamic = Metrics(Metrics.KATZ_CENTRALITY, CONNECTION_IN, ITE
 weighted_katz_centrality_in_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 closeness_centrality_in_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 betweenness_centrality_in_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
-local_centrality_in_dynamic =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
+local_centrality_in_dynamic = Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_IN, ITERATOR_DYNAMIC)
 
 degree_out_static = Metrics(Metrics.DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
 weighted_degree_out_static = Metrics(Metrics.WEIGHTED_DEGREE, CONNECTION_OUT, ITERATOR_STATIC)
@@ -53,7 +54,7 @@ weighted_katz_centrality_out_dynamic = Metrics(Metrics.WEIGHTED_EIGENVECTOR_CENT
                                                ITERATOR_DYNAMIC)
 closeness_centrality_out_dynamic = Metrics(Metrics.CLOSENESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
 betweenness_centrality_out_dynamic = Metrics(Metrics.BETWEENNESS_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
-local_centrality_out_dynamic =  Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
+local_centrality_out_dynamic = Metrics(Metrics.LOCAL_CENTRALITY, CONNECTION_OUT, ITERATOR_DYNAMIC)
 
 jaccard_index_neighbors_static = Metrics(Metrics.JACCARD_INDEX_NEIGHBORS, CONNECTION_IN_OUT, ITERATOR_STATIC)
 reciprocity = Metrics(Metrics.RECIPROCITY, None, ITERATOR_STATIC)
@@ -162,7 +163,6 @@ clustering_parameters = [
     # (jaccard_index, 1)
 ]
 
-
 clustering_scenario_1 = [
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, degree_in_static, 1),
     (NeighborhoodMode.COMMENTS_TO_POSTS_FROM_OTHERS, weighted_degree_in_static, 1),
@@ -198,7 +198,7 @@ clustering_scenario_4 = [
 
 ]
 
-statistics_functions = [len, max, mean, stdev, #(np.percentile, [20]),
+statistics_functions = [len, max, mean, stdev,  # (np.percentile, [20]),
                         (np.percentile, [10]), (np.percentile, [30]), (np.percentile, [50]),
                         (np.percentile, [70]), (np.percentile, [75]), (np.percentile, [80]),
                         (np.percentile, [85]), (np.percentile, [90]), (np.percentile, [95]),

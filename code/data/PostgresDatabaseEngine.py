@@ -1,8 +1,8 @@
 import logging
 
 import psycopg2
-from data.DatabaseEngine import DatabaseEngine
-from utility.Functions import fun_all
+from code.data.DatabaseEngine import DatabaseEngine
+from code.utility.Functions import fun_all
 
 
 class PostgresDatabaseEngine(DatabaseEngine):
@@ -15,7 +15,6 @@ class PostgresDatabaseEngine(DatabaseEngine):
         except psycopg2.OperationalError:
             logging.error("Unable to connect to the database")
             return
-        self.cur = self.db.cursor()
 
     def create_activity_date_columns(self):
         if self.cur is not None and not self.does_column_exist("authors", "first_activity_date"):
@@ -59,13 +58,12 @@ class PostgresDatabaseEngine(DatabaseEngine):
                         tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s"""
                                         % ("authors", "last_activity_date", date, author_id))
                     n = n + 1
-                data = self.cur.fetchmany(1000)
+                data = self.db.cursor().fetchmany(1000)
                 self.db.commit()
 
     def drop_column(self, column_name, table="authors"):
-        if self.cur is not None:
-            self.cur.execute("""ALTER TABLE" %s DROP %s""" % (table, column_name))
-            self.db.commit()
+        self.db.cursor().execute("""ALTER TABLE" %s DROP %s""" % (table, column_name))
+        self.db.commit()
 
     def get_activity_dates(self):
         return dict(self.execute("SELECT id, first_activity_date FROM authors")), \
@@ -76,56 +74,54 @@ class PostgresDatabaseEngine(DatabaseEngine):
         return '{' + ','.join([str(x) for x in alist]) + '}'
 
     def update_array_value_column(self, column_name, author_id, value):
-        if self.cur is not None:
-            if not self.does_column_exist("authors", column_name):
-                try:
-                    self.cur.execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", column_name))
-                except psycopg2.Error:
-                    self.db.rollback()
-            tmp_cur = self.db.cursor()
-            tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s""" %
-                            ("authors", column_name, self.lst2pgarr(value), author_id))
-            self.db.commit()
+        if not self.does_column_exist("authors", column_name):
+            try:
+                self.db.cursor().execute("""ALTER TABLE %s ADD %s float[]""" % ("authors", column_name))
+            except psycopg2.Error:
+                self.db.rollback()
+        tmp_cur = self.db.cursor()
+        tmp_cur.execute("""UPDATE %s SET %s = '%s' WHERE id = %s""" %
+                        ("authors", column_name, self.lst2pgarr(value), author_id))
+        self.db.commit()
 
     def get_array_value_column_for_user(self, column_name, author_id, fun=None):
-        if self.cur is not None:
-            self.cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
-            self.db.commit()
-            if fun == "all":
-                return self.cur.fetchall()[0]
-            if fun is not None:
-                return fun(self.cur.fetchall()[0][0])
-            return self.cur.fetchall()[0][0]
+        cur =  self.db.cursor()
+        cur.execute("""SELECT %s FROM authors WHERE id = %s""" % (column_name, author_id))
+        self.db.commit()
+        if fun == "all":
+            return cur.fetchall()[0]
+        if fun is not None:
+            return fun(cur.fetchall()[0][0])
+        return cur.fetchall()[0][0]
 
     def get_array_value_column(self, column_name, fun=None):
-        if self.cur is not None:
-            self.cur.execute("""SELECT id, %s FROM authors ORDER BY id""" % column_name)
-            self.db.commit()
-            if fun == fun_all:
-                return dict(self.cur.fetchall())
-            if fun is not None:
-                return {x[0]: fun(x[1]) for x in self.cur.fetchall()}
-            return {x[0]: x[1][0] for x in self.cur.fetchall()}
+        cur = self.db.cursor()
+        cur.execute("""SELECT id, %s FROM authors ORDER BY id""" % column_name)
+        self.db.commit()
+        if fun == fun_all:
+            return dict(cur.fetchall())
+        if fun is not None:
+            return {x[0]: fun(x[1]) for x in cur.fetchall()}
+        return {x[0]: x[1][0] for x in cur.fetchall()}
 
     def get_min_max_array_value_column(self, column_name, fun=None):
-        if self.cur is not None:
-            self.cur.execute("""SELECT %s FROM authors ORDER BY id""" % column_name)
-            self.db.commit()
-            data = [d[0][0] for d in self.cur.fetchall()]
-            if fun is not None and isinstance(data[0], list):
-                data = [fun(d) for d in data]
-                return min(data), max(data)
-            else:
-                return min(data), max(data)
+        cur = self.db.cursor()
+        cur.execute("""SELECT %s FROM authors ORDER BY id""" % column_name)
+        self.db.commit()
+        data = [d[0][0] for d in cur.fetchall()]
+        if fun is not None and isinstance(data[0], list):
+            data = [fun(d) for d in data]
+            return min(data), max(data)
+        else:
+            return min(data), max(data)
 
     def does_column_exist(self, table, column):
-        if self.cur is not None:
-            self.cur.execute("""SELECT count(*)
-                                     FROM information_schema.columns
-                                     WHERE table_name = '%s'
-                                     AND column_name = '%s'"""
-                             % (table, column))
-            return self.cur.fetchone()[0] is not 0
+        self.db.cursor().execute("""SELECT count(*)
+                                 FROM information_schema.columns
+                                 WHERE table_name = '%s'
+                                 AND column_name = '%s'"""
+                         % (table, column))
+        return self.db.cursor().fetchone()[0] is not 0
 
     def get_dates_range(self, column):
         return self.execute("SELECT min(date), max(date) FROM " + column).pop()
@@ -190,6 +186,6 @@ class PostgresDatabaseEngine(DatabaseEngine):
         return dict(self.execute("SELECT id, " + parameter + " FROM authors"))
 
     def execute(self, query, parameters=None):
-        if self.cur is not None:
-            self.cur.execute(query, parameters)
-            return self.cur.fetchall()
+        cur = self.db.cursor()
+        cur.execute(query, parameters)
+        return cur.fetchall()

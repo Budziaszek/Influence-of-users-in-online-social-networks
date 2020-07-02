@@ -1,0 +1,10 @@
+Najpierw trzeba stworzyc uzytkownika o parametrach
+user: sna_user
+password: sna_password
+
+Potem
+import: psql -d salon24db -U sna_user -f file.sql
+
+export: pg_dump -U sna_user -d salon24db -f file.sql
+
+

@@ -1,7 +1,7 @@
 from collections import defaultdict
 from statistics import mean
 
-from network.GraphIterator import GraphIterator
+from code.network.GraphIterator import GraphIterator
 
 
 class GraphConnectionType:

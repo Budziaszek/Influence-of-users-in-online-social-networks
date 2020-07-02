@@ -9,21 +9,22 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 
-from data.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram, \
+from code.data.ResultsDisplay import data_statistics, distribution_linear, show_plots, histogram, \
     category_histogram
-from manager.Manager import Manager
-from metrics.Metrics import Metrics
-from metrics.config import clustering_scenario_3, functions, clustering_scenario_1, clustering_scenario_2
-from network.GraphConnectionType import GraphConnectionType
-from network.GraphIterator import GraphIterator
-from network.NeighborhoodMode import NeighborhoodMode
-from utility.Functions import without_nan, max_mode, fun_all
+from code.manager.Manager import Manager
+from code.metrics.Metrics import Metrics
+from code.metrics.config import clustering_scenario_3, functions, clustering_scenario_1, clustering_scenario_2
+from code.network.GraphConnectionType import GraphConnectionType
+from code.network.GraphIterator import GraphIterator
+from code.network.NeighborhoodMode import NeighborhoodMode
+from code.utility.Functions import without_nan, max_mode, fun_all
 
 # import matplotlib
 matplotlib.use('TkAgg')
 
 
 class ManagerApp(QWidget):
+    """Warning! This GUI is intended for testing purposes. Improper use may result in an error"""
     def __init__(self):
         super().__init__()
         self.title = 'Influence of users in online social networks'

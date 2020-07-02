@@ -3,7 +3,7 @@ import logging
 from PyQt5.QtWidgets import QApplication
 import sys
 
-from manager.App import ManagerApp
+from code.manager.App import ManagerApp
 
 # from matplotlib.colors import ListedColormap
 # import seaborn as sns

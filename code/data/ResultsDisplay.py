@@ -2,8 +2,8 @@ import logging
 import math
 from collections import defaultdict
 
-from data.FileWriter import FileWriter
-from metrics.Statistics import Statistics
+from code.data import FileWriter
+from code.metrics import Statistics
 import matplotlib.pyplot as plt
 import numpy as np
 
