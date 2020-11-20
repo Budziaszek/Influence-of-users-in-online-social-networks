@@ -1,5 +1,5 @@
 The project concerns a master's thesis
-# Influence of users on social networks in the context of the structure of their neighborhoods #
+# Influence of users in online social networks in the context of the structure of their neighborhoods #
 
 ## Database ##
 
