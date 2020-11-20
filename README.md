@@ -1,58 +1,58 @@
-Projekt dotyczy pracy magisterkiej o tytule
-# Wpływowość użytkowników w portalach społecznościowych w kontekście struktury ich sąsiedztw #
+The project concerns a master's thesis
+# Influence of users on social networks in the context of the structure of their neighborhoods #
 
-## Baza danych ##
+## Database ##
 
-Oprócz plików zawartych w repozytorium należy posiadać lokalną bazę danych zawierającą informacje z portalu Salon24.pl. 
-Plik, który należy zaimportować w celu utworzenia lokalnej bazy danych zapisany w formacie sql znajduje się w folderze salon24_data.
-W tym folderze znajdują się także wszystkie informacje niezbędne do korzystania z tej bazy danych.
+In addition to the files contained in the repository, you must have a local database containing information from the Salon24.pl portal.
+The file that needs to be imported to create a local database, saved in sql format, is located in the salon24_data folder.
+This folder also contains all the information necessary to use this database.
 
-## Generowane pliki ##
-Wyniki działania programu przeznaczone dla użytkownika są zapisywane w folderze oputput. W folderze graphs znajdują się pliki związane z grafami, które są generowane w trakcie działania programu poprzez serializację. Przy kolejnych uruchomieniach są one deserializowane w celu przyspieszenia obliczeń (bez nich każdorazowo należałoby przetwarzać wszystkie relacje z bazy). Dodatkowo w wyniku predykcji tworzy się folder temp zawierający modele i zbiór danych wykorzystywanych do predykcji. 
+## Generated files ##
+The program's results for the user are saved in the oputput folder. In the graphs folder there are files related to graphs, which are generated during the program's operation by serialization. At subsequent launches, they are deserialized to speed up the calculations (without them, all relations from the database should be processed each time). Additionally, as a result of prediction, a temp folder is created containing models and a set of data used for prediction.
 
-## Wymagania ##
-Do działania programu niezbędne jest zainstalowanie pakietów:
+## Requirements ##
+For the program to work, it is necessary to install the following packages:
 
-•	psycopg2
+• psycopg2
 
-•	NetworkX
+• NetworkX
 
-•	Pandas
+• Pandas
 
-•	NumPy
+• NumPy
 
-•	Matplotlib
+• Matplotlib
 
-•	Scikit-learn
+• Scikit-learn
 
-•	Pickle
+• Pickle
 
-Dodatkowo w celu korzystania z prostego interfejsu użytkownika należy posiadać pakiet PyQt5. Korzystanie z graficznego interfejsu nie jest jednak wymagane.
+Additionally, in order to use the simple user interface, you must have the PyQt5 package. However, the use of a graphical interface is not required.
 
-## Uruchomienie programu ##
-Zalecane jest uruchomienie programu z użyciem oprogramowania PyCharm. Uruchomienie obliczeń (programu) odbywa się poprzez klasę Manager. W konstruktorze tej klasy należy podać parametry do połączenia bazą danych. Jeśli baza nie zawiera wyliczonych wartości miar należy przed ich użyciem stworzyć odpowiednie kolumny poprzez wywołanie metody calculate. W tym celu wykorzystywane są grafy tworzone automatycznie na podstawie danych z bazy, które następnie są zapisywane w folderze graph, co umożliwia ich późniejsze użycie bez potrzeby ponownego przetwarzania relacji. 
-	Możliwe jest korzystanie z prostego interfejsu graficznego stworzonego w ramach systemu lub wywoływanie funkcji bezpośrednio poprzez klasę Manager. Graficzny interfejs użytkownika jest realizowany w ramach klasy App.
-Główną funkcjonalność programu realizują następujące funkcje klasy App (wywołujące odpowiednie metody klasy Manager):
+## Running the program ##
+It is recommended to run the program with PyCharm software. The calculation (program) is started through the Manager class. In the constructor of this class, parameters for database connection should be provided. If the database does not contain the calculated values ​​of measures, you should create appropriate columns before using them by calling the calculate method. For this purpose, graphs created automatically on the basis of data from the database are used, which are then saved in the graph folder, which allows them to be used later without the need to reprocess the relationship.
+It is possible to use the simple graphical interface created within the system or call functions directly through the Manager class. The graphical user interface is implemented within the App class.
+The main functionality of the program is performed by the following functions of the App class (calling appropriate methods of the Manager class):
 
-a)	calculate – wyliczanie wartości nowych (jeszcze nie uwzględnionych w bazie) miar
+a) calculate - calculation of new (not yet included in the database) measures
 
-b)	display – wypisywanie danych użytkowników spełniających określone warunki
+b) display - displaying data of users meeting certain conditions
 
-c)	histogram – tworzenie histogramu dla wybranych danych
+c) histogram - creating a histogram for selected data
 
-d)	statistics – wypisywanie statystyk dla wybranych danych
+d) statistics - printing out statistics for selected data
 
-e)	correlation – wyliczanie korelacji dla wybranych miar
+e) correlation - calculating correlation for selected measures
 
-f)	ranking – tworzenie rankingu użytkowników w oparciu o podaną miarę
+f) ranking - creating a ranking of users based on a given measure
 
-g)	table – tworzenie tabeli zawierającej wartości wybranych miar dla użytkowników do tabeli (z uwzględnieniem wszystkich lub tylko wybranych użytkowników)
+g) table - creating a table containing the values ​​of selected measures for users to a table (including all or only selected users)
 
-h)	clustering – klastrowanie metodą k-means wraz z rysowaniem wykresów
+h) clustering - k-means clustering with drawing charts
 
-i)	prediction – przeprowadzenie predykcji przyszłej wartości stopnia wejściowego
+i) prediction - making a prediction of the future value of the input stage
 
 
-## Pliki wyjściowe ##
-Wynik działania funkcji składowych programu to często wykres wizualizujący dane lub przebieg procesu związanego z ich przetwarzaniem i analizą. Dodatkowo, w przypadku większości funkcji możliwe jest zapisanie wyniku działania (np. tabelę z wartościami miar dla poszczególnych użytkowników) do pliku. Pliki te są zapisywane w folderze output.
-Pliki wynikowe zapisywane są w formacie CSV. Ich szczegółowa zawartość zależy od funkcji, w której następuje zapis. Są to jednak tabele, które zawierają nazwy kolumn i jeśli jest taka potrzeba nazwy wierszy, które umożliwiają ich łatwą interpretację. Forma, w jakiej zapisane są wyniki umożliwia zaimportowanie ich w prosty sposób do programu Excel.
+## Output files ##
+The result of operation of program component functions is often a graph visualizing data or the course of a process related to their processing and analysis. Additionally, in the case of most functions, it is possible to save the result of an operation (e.g. a table with measurement values ​​for individual users) to a file. These files are saved in the output folder.
+The resulting files are saved in CSV format. Their detailed content depends on the function in which the write takes place. However, these are tables that contain column names and, if necessary, row names that allow easy interpretation. The form in which the results are saved makes it easy to import them into Excel.
